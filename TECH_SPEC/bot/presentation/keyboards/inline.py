@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import date
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -14,6 +15,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="📊 Показать прогресс", callback_data="progress_show:main_menu"),
+        ],
+        [
+            InlineKeyboardButton(text="📅 Недельная статистика", callback_data=f"progress_weekly_show:{date.today().isoformat()}"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -105,6 +109,26 @@ def calorie_goal_mode_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="◀️ Назад", callback_data="profile_setup"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def weekly_stats_keyboard(reference_date: date) -> InlineKeyboardMarkup:
+    """Клавиатура навигации по недельной статистике."""
+    from datetime import timedelta
+    prev_week = reference_date - timedelta(days=7)
+    next_week = reference_date + timedelta(days=7)
+    buttons = [
+        [
+            InlineKeyboardButton(text="◀️ Предыдущая неделя",
+                                 callback_data=f"progress_weekly_show:{prev_week.isoformat()}"),
+            InlineKeyboardButton(text="▶️ Следующая неделя",
+                                 callback_data=f"progress_weekly_show:{next_week.isoformat()}"),
+        ],
+        [
+            InlineKeyboardButton(text="🔙 В главное меню",
+                                 callback_data="main_menu"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

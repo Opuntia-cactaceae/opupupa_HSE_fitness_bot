@@ -1,4 +1,5 @@
 from datetime import date
+from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -95,3 +96,13 @@ class DailyStatsRepositoryImpl(DailyStatsRepository):
         result = await self._session.execute(stmt)
         model = result.scalar_one()
         return to_domain(model)
+
+    async def get_for_user_in_range(self, user_id: int, date_from: date, date_to: date) -> List[DailyStats]:
+        stmt = select(DailyStatsModel).where(
+            DailyStatsModel.user_id == user_id,
+            DailyStatsModel.date >= date_from,
+            DailyStatsModel.date <= date_to
+        ).order_by(DailyStatsModel.date)
+        result = await self._session.execute(stmt)
+        models = result.scalars().all()
+        return [to_domain(model) for model in models]

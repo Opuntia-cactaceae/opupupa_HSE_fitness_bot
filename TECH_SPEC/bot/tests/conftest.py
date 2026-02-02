@@ -71,6 +71,7 @@ def mock_daily_stats_repository():
     mock.get = AsyncMock()
     mock.get_or_create = AsyncMock()
     mock.update = AsyncMock()
+    mock.get_for_user_in_range = AsyncMock()
     return mock
 
 

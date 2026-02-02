@@ -1,10 +1,11 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
-from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard
+from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard
 from infrastructure.config.database import AsyncSessionFactory
 from infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from application.use_cases.progress.check_progress import check_progress
+from application.use_cases.progress.get_weekly_stats import get_weekly_stats
 
 router = Router()
 
@@ -57,6 +58,66 @@ async def callback_progress_show(callback: CallbackQuery):
         else:
             keyboard = main_menu_keyboard()  # Fallback
 
+        await callback.message.edit_text(
+            message,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+
+
+@router.callback_query(F.data.startswith("progress_weekly_show"))
+async def callback_progress_weekly_show(callback: CallbackQuery):
+    """Показать недельную статистику."""
+    from datetime import date, timedelta
+
+    # Parse reference date from callback data (format: "progress_weekly_show:YYYY-MM-DD")
+    parts = callback.data.split(":")
+    if len(parts) > 1:
+        try:
+            reference_date = date.fromisoformat(parts[1])
+        except ValueError:
+            reference_date = date.today()
+    else:
+        reference_date = date.today()
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        week_start, week_end, daily_stats_list = await get_weekly_stats(
+            callback.from_user.id, reference_date, uow
+        )
+
+        # Build message
+        message = f"📅 **Неделя:** {week_start.strftime('%d.%m')} – {week_end.strftime('%d.%m')}\n\n"
+
+        # Prepare dict of existing stats by date for quick lookup
+        stats_by_date = {stats.date: stats for stats in daily_stats_list}
+
+        # Iterate through each day of the week (Monday to Sunday)
+        for day_offset in range(7):
+            day_date = week_start + timedelta(days=day_offset)
+            stats = stats_by_date.get(day_date)
+
+            # Day header
+            day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+            message += f"{day_names[day_offset]} {day_date.strftime('%d.%m')}\n"
+
+            if stats is None:
+                message += "💧 0 / 0 мл\n🔥 0 / 0 ккал (−0)\n🏃 Сожжено: 0 ккал, 0 мл\n\n"
+            else:
+                water_logged = stats.water_logged_ml
+                water_goal = stats.water_goal_ml
+                calories_consumed = stats.calories_consumed_kcal
+                calorie_goal = stats.calorie_goal_kcal
+                calories_burned = stats.calories_burned_kcal
+                calorie_balance = stats.calorie_balance_kcal
+                water_burned = 0  # TODO: calculate water burned from workouts
+
+                message += (
+                    f"💧 {water_logged} / {water_goal} мл\n"
+                    f"🔥 {calories_consumed} / {calorie_goal} ккал ({calorie_balance:+})\n"
+                    f"🏃 Сожжено: {calories_burned} ккал, {water_burned} мл\n\n"
+                )
+
+        keyboard = weekly_stats_keyboard(reference_date)
         await callback.message.edit_text(
             message,
             reply_markup=keyboard,
