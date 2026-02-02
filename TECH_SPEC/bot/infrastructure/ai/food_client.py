@@ -52,7 +52,22 @@ class FoodClient:
         """
         # urllib.parse.quote encodes all characters except alphanumerics and _ . -
         # We need to also keep tilde (~) unencoded, so add it to safe characters.
-        return urllib.parse.quote(s, safe="-._~")
+        # Decode any existing percent-encoding to ensure idempotency.
+        return urllib.parse.quote(urllib.parse.unquote(s), safe="-._~")
+
+    def _build_encoded_query(self, params: Dict[str, str]) -> str:
+        """
+        Build percent-encoded query string from parameters according to RFC 3986.
+
+        Returns string in format "key1=value1&key2=value2" with keys and values
+        percent-encoded and sorted lexicographically.
+        """
+        encoded = {}
+        for k, v in params.items():
+            encoded[self._percent_encode(k)] = self._percent_encode(v)
+        # Sort by encoded key, then value
+        sorted_items = sorted(encoded.items(), key=lambda x: (x[0], x[1]))
+        return "&".join(f"{k}={v}" for k, v in sorted_items)
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -158,8 +173,9 @@ class FoodClient:
                     method, self.BASE_URL, params
                 )
             }
+            encoded_query = self._build_encoded_query(params)
             async with session.request(
-                method, self.BASE_URL, params=params, headers=headers
+                method, self.BASE_URL, params=encoded_query, headers=headers
             ) as resp:
                 if resp.status != 200:
                     logger.warning(
