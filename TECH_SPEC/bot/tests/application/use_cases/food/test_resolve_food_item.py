@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from application.use_cases.food.resolve_food_item import resolve_food_item
+from infrastructure.ai.food_client import FATSECRET_ATTRIBUTION
 
 
 class TestResolveFoodItem:
@@ -17,6 +18,8 @@ class TestResolveFoodItem:
         with patch('application.use_cases.food.resolve_food_item.FoodClient') as MockFoodClient, \
              patch('application.use_cases.food.resolve_food_item.settings') as mock_settings:
 
+            mock_settings.FATSECRET_CONSUMER_KEY = ""
+            mock_settings.FATSECRET_CONSUMER_SECRET = ""
             mock_client = AsyncMock()
             mock_client.search_product.return_value = expected_result
             MockFoodClient.return_value = mock_client
@@ -25,7 +28,7 @@ class TestResolveFoodItem:
             result = await resolve_food_item(query)
 
             # Assert
-            MockFoodClient.assert_called_once()
+            MockFoodClient.assert_called_once_with(consumer_key="", consumer_secret="")
             mock_client.search_product.assert_called_once_with(query)
             assert result == expected_result
 
@@ -38,6 +41,8 @@ class TestResolveFoodItem:
         with patch('application.use_cases.food.resolve_food_item.FoodClient') as MockFoodClient, \
              patch('application.use_cases.food.resolve_food_item.settings') as mock_settings:
 
+            mock_settings.FATSECRET_CONSUMER_KEY = ""
+            mock_settings.FATSECRET_CONSUMER_SECRET = ""
             mock_client = AsyncMock()
             mock_client.search_product.return_value = None
             MockFoodClient.return_value = mock_client
@@ -46,5 +51,6 @@ class TestResolveFoodItem:
             result = await resolve_food_item(query)
 
             # Assert
+            MockFoodClient.assert_called_once_with(consumer_key="", consumer_secret="")
             mock_client.search_product.assert_called_once_with(query)
             assert result is None

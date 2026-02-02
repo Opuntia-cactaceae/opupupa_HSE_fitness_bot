@@ -66,21 +66,22 @@ async def process_food_input(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    product_name, kcal_per_100g = result
+    product_name, kcal_per_100g, attribution = result
 
     # Сохраняем данные в состоянии
     await state.update_data(
         product_query=product_query,
         product_name=product_name,
         kcal_per_100g=kcal_per_100g,
-        source="manual"  # или "api" в зависимости от реализации
+        source="fatsecret"  # данные от FatSecret API
     )
 
     # Переходим к вводу граммов
     await state.set_state(FoodLogStates.enter_grams)
     await message.answer(
         f"🍎 Найден продукт: {product_name}\n"
-        f"Калорийность: {kcal_per_100g} ккал/100г\n\n"
+        f"Калорийность: {kcal_per_100g} ккал/100г\n"
+        f"{attribution}\n\n"
         "Введите количество в граммах:",
     )
 

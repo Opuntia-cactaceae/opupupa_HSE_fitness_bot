@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     WEATHER_API_KEY: str | None = None
     FOOD_API_KEY: str | None = None
+    FATSECRET_CONSUMER_KEY: str | None = None
+    FATSECRET_CONSUMER_SECRET: str | None = None
     AI_API_KEY: str | None = None
 
 settings = Settings()
