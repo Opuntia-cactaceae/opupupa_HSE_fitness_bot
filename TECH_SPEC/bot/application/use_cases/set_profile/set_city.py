@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from domain.interfaces.unit_of_work import UnitOfWork
+from .finalize_profile import finalize_profile
 
 
 async def set_city(user_id: int, city: str, uow: UnitOfWork) -> None:
@@ -11,3 +12,6 @@ async def set_city(user_id: int, city: str, uow: UnitOfWork) -> None:
     user.city = city
     user.updated_at = datetime.utcnow()
     await uow.users.update(user)
+
+    # Пересчитать цели в DailyStats (для температурной коррекции воды)
+    await finalize_profile(user_id, uow)

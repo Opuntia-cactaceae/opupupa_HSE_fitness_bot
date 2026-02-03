@@ -10,6 +10,7 @@ from presentation.keyboards.inline import (
     main_menu_keyboard,
     profile_setup_keyboard,
     calorie_goal_mode_keyboard,
+    water_goal_mode_keyboard,
 )
 from presentation.validators.profile import (
     validate_weight,
@@ -18,6 +19,7 @@ from presentation.validators.profile import (
     validate_activity_minutes,
     validate_city,
     validate_calorie_goal,
+    validate_water_goal,
 )
 from domain.exceptions import ValidationError
 from infrastructure.config.database import AsyncSessionFactory
@@ -30,6 +32,8 @@ from application.use_cases.set_profile.set_activity_minutes import set_activity_
 from application.use_cases.set_profile.set_city import set_city
 from application.use_cases.set_profile.set_calorie_goal_mode import set_calorie_goal_mode
 from application.use_cases.set_profile.set_calorie_goal_manual import set_calorie_goal_manual
+from application.use_cases.set_profile.set_water_goal_mode import set_water_goal_mode
+from application.use_cases.set_profile.set_water_goal_manual import set_water_goal_manual
 from application.use_cases.set_profile.finalize_profile import finalize_profile
 
 router = Router()
@@ -54,6 +58,11 @@ async def get_formatted_profile_text(user_id: int, uow: SqlAlchemyUnitOfWork) ->
     else:
         calorie_goal_text = f"авто ({user.calculate_base_calorie_goal_kcal()} ккал)"
 
+    if user.water_goal_mode == "manual" and user.water_goal_ml_manual:
+        water_goal_text = f"ручная ({user.water_goal_ml_manual} мл)"
+    else:
+        water_goal_text = f"авто ({user.calculate_base_water_goal_ml()} мл)"
+
     return (
         "📋 **Текущий профиль:**\n"
         f"• Вес: {weight_text}\n"
@@ -61,7 +70,8 @@ async def get_formatted_profile_text(user_id: int, uow: SqlAlchemyUnitOfWork) ->
         f"• Возраст: {age_text}\n"
         f"• Активность: {activity_text}\n"
         f"• Город: {city_text}\n"
-        f"• Цель калорий: {calorie_goal_text}\n\n"
+        f"• Цель калорий: {calorie_goal_text}\n"
+        f"• Цель воды: {water_goal_text}\n\n"
         "⬇️ Выберите параметр для изменения:"
     )
 
@@ -370,18 +380,96 @@ async def process_city_input(message: Message, state: FSMContext):
         )
 
 
-@router.callback_query(F.data.startswith("profile_set_calorie_goal_manual"))
-async def callback_set_calorie_goal_manual(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода цели по калориям."""
-    # Parse parent context from callback data (format: "profile_set_calorie_goal_manual" or "profile_set_calorie_goal_manual:parent")
+@router.callback_query(F.data.startswith("profile_set_calorie_goal"))
+async def callback_set_calorie_goal(callback: CallbackQuery):
+    """Переход к выбору режима цели калорий."""
+    # Parse parent context from callback data (format: "profile_set_calorie_goal" or "profile_set_calorie_goal:parent")
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+
+    await callback.message.edit_text(
+        "Выберите режим цели по калориям:",
+        reply_markup=calorie_goal_mode_keyboard(parent_context=parent_context),
+    )
+
+
+@router.callback_query(F.data.startswith("calorie_goal_auto"))
+async def callback_calorie_goal_auto(callback: CallbackQuery):
+    """Установить автоматический режим цели калорий."""
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        await set_calorie_goal_mode(callback.from_user.id, "auto", uow)
+
+        keyboard = profile_setup_keyboard(parent_context=parent_context)
+        await callback.message.edit_text(
+            "✅ Режим цели калорий установлен: авто расчет.",
+            reply_markup=keyboard,
+        )
+
+
+@router.callback_query(F.data.startswith("calorie_goal_manual"))
+async def callback_calorie_goal_manual(callback: CallbackQuery, state: FSMContext):
+    """Установить ручной режим цели калорий и запросить ввод."""
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 else "main_menu"
 
     # Store parent context in FSM state
     await state.update_data(parent_context=parent_context)
     await state.set_state(SetProfileStates.set_calorie_goal_manual)
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        await set_calorie_goal_mode(callback.from_user.id, "manual", uow)
+
     await callback.message.edit_text(
         "Введите цель по калориям в ккал (например: 2000):",
+    )
+
+
+@router.callback_query(F.data.startswith("profile_set_water_goal"))
+async def callback_set_water_goal(callback: CallbackQuery):
+    """Переход к выбору режима цели по воде."""
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+
+    await callback.message.edit_text(
+        "Выберите режим цели по воде:",
+        reply_markup=water_goal_mode_keyboard(parent_context=parent_context),
+    )
+
+
+@router.callback_query(F.data.startswith("water_goal_auto"))
+async def callback_water_goal_auto(callback: CallbackQuery):
+    """Установить автоматический режим цели по воде."""
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        await set_water_goal_mode(callback.from_user.id, "auto", uow)
+
+        keyboard = profile_setup_keyboard(parent_context=parent_context)
+        await callback.message.edit_text(
+            "✅ Режим цели по воде установлен: авто расчет.",
+            reply_markup=keyboard,
+        )
+
+
+@router.callback_query(F.data.startswith("water_goal_manual"))
+async def callback_water_goal_manual(callback: CallbackQuery, state: FSMContext):
+    """Установить ручной режим цели по воде и запросить ввод."""
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+
+    # Store parent context in FSM state
+    await state.update_data(parent_context=parent_context)
+    await state.set_state(SetProfileStates.set_water_goal_manual)
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        await set_water_goal_mode(callback.from_user.id, "manual", uow)
+
+    await callback.message.edit_text(
+        "Введите цель по воде в мл (например: 2000):",
     )
 
 
@@ -419,29 +507,38 @@ async def process_calorie_goal_manual_input(message: Message, state: FSMContext)
         await message.answer(f"❌ {e.message}")
 
 
-@router.callback_query(F.data.startswith("profile_finalize"))
-async def callback_finalize_profile(callback: CallbackQuery):
-    """Завершение настройки профиля."""
-    # Parse parent context from callback data (format: "profile_finalize" or "profile_finalize:parent")
-    parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+@router.message(StateFilter(SetProfileStates.set_water_goal_manual), F.text)
+async def process_water_goal_manual_input(message: Message, state: FSMContext):
+    """Обработка ввода цели по воде."""
+    # Валидация ввода
+    try:
+        water_ml = validate_water_goal(message.text)
+    except ValidationError as e:
+        await message.answer(f"❌ {e.message}")
+        return
 
-    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
-        await finalize_profile(callback.from_user.id, uow)
+    try:
+        async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+            await set_water_goal_manual(message.from_user.id, water_ml, uow)
+            # Get parent context from state before clearing
+            data = await state.get_data()
+            parent_context = data.get("parent_context", "main_menu")
+            await state.clear()
 
-        # Determine which keyboard to show based on parent context
-        if parent_context == "profile_setup":
-            keyboard = profile_setup_keyboard(parent_context="main_menu")
-        elif parent_context == "main_menu":
-            keyboard = main_menu_keyboard()
-        else:
-            # For any other parent context, fallback to main menu
-            keyboard = main_menu_keyboard()
+            # Determine which keyboard to show based on parent context
+            if parent_context == "profile_setup":
+                keyboard = profile_setup_keyboard(parent_context="main_menu")
+            elif parent_context == "main_menu":
+                keyboard = main_menu_keyboard()
+            else:
+                keyboard = main_menu_keyboard()  # Fallback
 
-        await callback.message.edit_text(
-            "✅ Профиль успешно настроен! Цели рассчитаны.",
-            reply_markup=keyboard,
-        )
+            await message.answer(
+                f"✅ Цель по воде сохранена: {water_ml} мл",
+                reply_markup=keyboard,
+            )
+    except ValidationError as e:
+        await message.answer(f"❌ {e.message}")
 
 
 @router.callback_query(F.data == "main_menu")

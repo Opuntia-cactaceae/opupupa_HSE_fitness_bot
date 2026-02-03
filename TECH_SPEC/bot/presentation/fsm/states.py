@@ -9,6 +9,7 @@ class SetProfileStates(StatesGroup):
     set_activity_minutes = State()
     set_city = State()
     set_calorie_goal_manual = State()
+    set_water_goal_manual = State()
 
 
 class FoodLogStates(StatesGroup):

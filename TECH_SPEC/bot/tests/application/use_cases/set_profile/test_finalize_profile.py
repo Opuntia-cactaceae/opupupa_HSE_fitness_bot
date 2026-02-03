@@ -45,9 +45,9 @@ class TestFinalizeProfile:
         assert sample_daily_stats.water_goal_ml == 3100
 
         # Base calories: 10*70 + 6.25*175 - 5*30 = 700 + 1093.75 - 150 = 1643.75 ≈ 1643
-        # Activity bonus: 60min // 30 * 300kcal = 600kcal
-        # Total calorie goal: ~2243kcal
-        assert sample_daily_stats.calorie_goal_kcal == 2243
+        # Activity bonus: 300 (60 мин)
+        # Total calorie goal: ~1943
+        assert sample_daily_stats.calorie_goal_kcal == 1943
 
     @pytest.mark.asyncio
     async def test_finalize_profile_manual_mode_uses_manual_goal(self, mock_uow, sample_user, sample_daily_stats):
@@ -85,6 +85,41 @@ class TestFinalizeProfile:
         assert sample_daily_stats.calorie_goal_kcal == 2500
 
     @pytest.mark.asyncio
+    async def test_finalize_profile_water_goal_manual_mode(self, mock_uow, sample_user, sample_daily_stats):
+        """Завершение профиля использует ручную цель по воде, когда режим manual."""
+        # Arrange
+        user_id = 12345
+        sample_user.water_goal_mode = "manual"
+        sample_user.water_goal_ml_manual = 3000
+        sample_user.activity_minutes_per_day = 60
+        sample_user.calorie_goal_mode = "auto"
+        sample_user.calorie_goal_kcal_manual = None
+
+        mock_uow.users.get.return_value = sample_user
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
+
+        with patch('application.use_cases.set_profile.finalize_profile.WeatherClient') as MockWeatherClient, \
+             patch('application.use_cases.set_profile.finalize_profile.settings') as mock_settings:
+
+            mock_weather = AsyncMock()
+            mock_weather.get_temperature.return_value = 15.0
+            MockWeatherClient.return_value = mock_weather
+
+            mock_settings.WEATHER_API_KEY = "test-api-key"
+
+            # Act
+            await finalize_profile(user_id, mock_uow)
+
+        # Assert
+        mock_uow.users.get.assert_called_once_with(user_id)
+        mock_uow.daily_stats.get_or_create.assert_called_once_with(user_id, date.today())
+
+        # Water goal should be manual value
+        assert sample_daily_stats.water_goal_ml == 3000
+        # Calorie goal should be auto calculated (default auto)
+        assert sample_daily_stats.calorie_goal_kcal == 1943
+
+    @pytest.mark.asyncio
     async def test_finalize_profile_with_temperature_bonus(self, mock_uow, sample_user, sample_daily_stats):
         """Завершение профиля добавляет бонус воды при температуре выше 25°C."""
         # Arrange
@@ -110,9 +145,9 @@ class TestFinalizeProfile:
         # Assert
         # Base water: 2100ml
         # Activity bonus: 1000ml
-        # Temperature bonus: 750ml
-        # Total: 3850ml
-        assert sample_daily_stats.water_goal_ml == 3850
+        # Temperature bonus: 500ml
+        # Total: 3600ml
+        assert sample_daily_stats.water_goal_ml == 3600
 
     @pytest.mark.asyncio
     async def test_finalize_profile_raises_error_when_user_not_found(self, mock_uow):

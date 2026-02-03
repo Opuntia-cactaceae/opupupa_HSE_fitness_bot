@@ -39,7 +39,9 @@ def profile_setup_keyboard(parent_context: str = "main_menu") -> InlineKeyboardM
             InlineKeyboardButton(text="Цель калорий", callback_data=f"profile_set_calorie_goal:profile_setup"),
         ],
         [
-            InlineKeyboardButton(text="✅ Завершить настройку", callback_data=f"profile_finalize:{parent_context}"),
+            InlineKeyboardButton(text="Цель воды", callback_data=f"profile_set_water_goal:profile_setup"),
+        ],
+        [
             InlineKeyboardButton(text="◀️ Назад", callback_data=parent_context),
         ],
     ]
@@ -100,15 +102,29 @@ def workout_type_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMa
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def calorie_goal_mode_keyboard() -> InlineKeyboardMarkup:
+def calorie_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура выбора режима цели калорий."""
     buttons = [
         [
-            InlineKeyboardButton(text="Авто расчет", callback_data="calorie_goal_auto"),
-            InlineKeyboardButton(text="Ручной ввод", callback_data="calorie_goal_manual"),
+            InlineKeyboardButton(text="Авто расчет", callback_data=f"calorie_goal_auto:{parent_context}"),
+            InlineKeyboardButton(text="Ручной ввод", callback_data=f"calorie_goal_manual:{parent_context}"),
         ],
         [
-            InlineKeyboardButton(text="◀️ Назад", callback_data="profile_setup"),
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"profile_setup:{parent_context}"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def water_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
+    """Клавиатура выбора режима цели по воде."""
+    buttons = [
+        [
+            InlineKeyboardButton(text="Авто расчет", callback_data=f"water_goal_auto:{parent_context}"),
+            InlineKeyboardButton(text="Ручной ввод", callback_data=f"water_goal_manual:{parent_context}"),
+        ],
+        [
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"profile_setup:{parent_context}"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
