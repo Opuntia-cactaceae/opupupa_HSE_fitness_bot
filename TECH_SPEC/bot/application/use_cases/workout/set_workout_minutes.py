@@ -7,13 +7,7 @@ from .set_workout_type import get_workout_met, get_workout_sweat_rate
 def calculate_workout_calories_and_water(
     weight_kg: float, workout_type: str, minutes: int
 ) -> Tuple[float, int]:
-    """
-    Рассчитать сожжённые калории и потерю воды для тренировки.
-
-    Формула калорий: MET * вес (кг) * время (часы)
-    Формула потери воды: скорость потоотделения (мл/мин) * время (мин)
-    Ограничения: калории ≤ 1500, вода ≤ 2000 мл за тренировку.
-    """
+    
     if weight_kg <= 0:
         raise ValidationError("Вес должен быть положительным")
 
@@ -23,7 +17,7 @@ def calculate_workout_calories_and_water(
     kcal_burned = met * weight_kg * hours
     water_burned_ml = sweat_rate * minutes
 
-    # Ограничения согласно спецификации
+                                       
     if kcal_burned > 1500:
         kcal_burned = 1500
     if water_burned_ml > 2000:

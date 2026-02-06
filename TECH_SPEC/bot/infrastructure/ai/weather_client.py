@@ -16,9 +16,22 @@ class WeatherInfo(NamedTuple):
 
 class WeatherClient:
     def __init__(self, api_key: Optional[str]):
+        """
+        Инициализирует клиент погоды.
+
+        Входные параметры:
+            api_key (Optional[str]): API-ключ внешнего погодного сервиса.
+
+        Логика работы:
+            - Сохраняет API-ключ.
+            - Инициализирует HTTP-сессию в неинициализированном состоянии.
+            - Инициализирует кэш результатов геокодирования города.
+
+        Возвращаемое значение:
+            None.
+        """
         self.api_key = api_key
         self._session: Optional[aiohttp.ClientSession] = None
-        # Simple in-memory cache for city -> (lat, lon)
         self._geocache: dict[str, tuple[float, float]] = {}
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -39,8 +52,23 @@ class WeatherClient:
 
     async def get_weather(self, city: str) -> Optional[WeatherInfo]:
         """
-        Получить информацию о погоде для города.
-        Возвращает WeatherInfo или None в случае ошибки.
+        Получает погодные данные для указанного города.
+
+        Входные параметры:
+            city (str): Название города.
+
+        Логика работы:
+            - Проверяет наличие API-ключа.
+            - Нормализует входное название города.
+            - Получает координаты города через геокодирование.
+            - Запрашивает погодные данные по координатам.
+            - Извлекает температуру и описание погоды из ответа.
+            - Формирует объект WeatherInfo.
+
+        Возвращаемое значение:
+            Optional[WeatherInfo]:
+                Данные о погоде, если они успешно получены и корректны.
+                None, если данные недоступны или входные параметры некорректны.
         """
         if not self.api_key:
             logger.debug("No API key provided")
@@ -50,7 +78,6 @@ class WeatherClient:
         if not city:
             return None
 
-        # Try geocoding (with Cyrillic fallback if needed)
         coords = await self._geocode_city(city)
         if coords is None:
             return None
@@ -60,7 +87,6 @@ class WeatherClient:
         if weather_data is None:
             return None
 
-        # Extract relevant fields
         temp = weather_data.get("main", {}).get("temp")
         if temp is None:
             return None
@@ -79,8 +105,19 @@ class WeatherClient:
 
     async def get_temperature(self, city: str) -> Optional[float]:
         """
-        Получить температуру в градусах Цельсия для города.
-        Для обратной совместимости.
+        Получает температуру воздуха для указанного города.
+
+        Входные параметры:
+            city (str): Название города.
+
+        Логика работы:
+            - Запрашивает погодные данные методом get_weather.
+            - Возвращает температуру из результата при наличии данных.
+
+        Возвращаемое значение:
+            Optional[float]:
+                Температура в градусах Цельсия, если данные доступны.
+                None, если данные недоступны.
         """
         weather = await self.get_weather(city)
         if weather is None:
@@ -88,16 +125,30 @@ class WeatherClient:
         return weather.temperature_c
 
     async def _geocode_city(self, city: str) -> Optional[tuple[float, float]]:
-        """Получить координаты города через OpenWeather Geocoding API."""
-        # Check cache first
+        """
+        Возвращает координаты города, используя кэш и при необходимости геокодирование.
+
+        Входные параметры:
+            city (str): Название города.
+
+        Логика работы:
+            - Проверяет наличие координат в локальном кэше.
+            - Выполняет запрос геокодирования по исходному названию.
+            - При неудаче и наличии кириллицы выполняет повторную попытку
+              с транслитерированным названием.
+            - Сохраняет успешный результат в кэш для исходного и транслитерированного названия.
+
+        Возвращаемое значение:
+            Optional[tuple[float, float]]:
+                Координаты (lat, lon), если город успешно геокодирован.
+                None, если координаты получить не удалось.
+        """
         if city in self._geocache:
             return self._geocache[city]
 
-        # Try geocoding with original city name
         coords = await self._geocode(city)
         transliterated = None
         if coords is None and _contains_cyrillic(city):
-            # Transliterate and retry
             transliterated = _transliterate_cyrillic(city)
             if transliterated != city:
                 logger.debug(f"Retrying geocoding with transliterated name: {transliterated}")
@@ -105,13 +156,28 @@ class WeatherClient:
 
         if coords is not None:
             self._geocache[city] = coords
-            # Also cache transliterated name if different
             if transliterated is not None and transliterated != city:
                 self._geocache[transliterated] = coords
         return coords
 
     async def _geocode(self, city: str) -> Optional[tuple[float, float]]:
-        """Вызов API геокодирования."""
+        """
+       Выполняет геокодирование города через OpenWeatherMap Geocoding API.
+
+       Входные параметры:
+           city (str): Название города.
+
+       Логика работы:
+           - Отправляет запрос к endpoint геокодирования с ограничением на один результат.
+           - Проверяет статус ответа.
+           - Извлекает широту и долготу из первого результата.
+           - Обрабатывает сетевые ошибки, таймауты и ошибки парсинга.
+
+       Возвращаемое значение:
+           Optional[tuple[float, float]]:
+               Координаты (lat, lon) при успешном получении данных.
+               None при ошибке запроса или отсутствии данных.
+       """
         url = "https://api.openweathermap.org/geo/1.0/direct"
         params = {
             "q": city,
@@ -142,7 +208,25 @@ class WeatherClient:
             return None
 
     async def _fetch_weather(self, lat: float, lon: float) -> Optional[dict]:
-        """Получить текущую погоду по координатам."""
+        """
+        Запрашивает погодные данные по координатам через OpenWeatherMap Weather API.
+
+        Входные параметры:
+            lat (float): Широта точки запроса.
+            lon (float): Долгота точки запроса.
+
+        Логика работы:
+            - Отправляет запрос к endpoint текущей погоды с метрическими единицами
+              и русским языком описаний.
+            - Проверяет статус ответа.
+            - Возвращает JSON-ответ.
+            - Обрабатывает сетевые ошибки, таймауты и ошибки парсинга.
+
+        Возвращаемое значение:
+            Optional[dict]:
+                Сырой JSON-ответ погодного сервиса при успешном запросе.
+                None при ошибке запроса или некорректном ответе.
+        """
         url = "https://api.openweathermap.org/data/2.5/weather"
         params = {
             "lat": lat,
@@ -168,15 +252,24 @@ class WeatherClient:
 
 
 def _contains_cyrillic(text: str) -> bool:
-    """Проверить, содержит ли текст кириллические символы."""
     return any('\u0400' <= char <= '\u04FF' for char in text)
 
 
 @lru_cache(maxsize=128)
 def _transliterate_cyrillic(text: str) -> str:
     """
-    Простая транслитерация кириллицы в латиницу.
-    Обрабатывает основные русские буквы, пробелы и дефисы.
+    Выполняет транслитерацию кириллического текста в латиницу по заданной таблице.
+
+    Входные параметры:
+        text (str): Исходная строка, возможно содержащая кириллицу.
+
+    Логика работы:
+        - Преобразует каждый символ по таблице соответствий.
+        - Неизвестные символы оставляет без изменений.
+        - Кэширует результат для повторных вызовов.
+
+    Возвращаемое значение:
+        str: Транслитерированная строка.
     """
     mapping = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e',
@@ -199,6 +292,5 @@ def _transliterate_cyrillic(text: str) -> str:
         if char in mapping:
             result.append(mapping[char])
         else:
-            # Keep non-Cyrillic characters as is (Latin letters, digits, punctuation)
             result.append(char)
     return ''.join(result)

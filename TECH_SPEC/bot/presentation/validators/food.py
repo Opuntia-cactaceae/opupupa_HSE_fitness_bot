@@ -1,4 +1,4 @@
-"""Валидаторы для сценариев трекинга еды."""
+
 
 from .base import create_numeric_validator
 from domain.exceptions import ValidationError
@@ -14,7 +14,7 @@ validate_grams = create_numeric_validator(
 
 
 def validate_product_name(text: str) -> str:
-    """Валидация названия продукта."""
+    
     product_name = text.strip()
 
     if not product_name:
@@ -23,7 +23,7 @@ def validate_product_name(text: str) -> str:
     if len(product_name) < 1 or len(product_name) > 100:
         raise ValidationError("Название продукта должно быть от 1 до 100 символов", field='product_name')
 
-    # Разрешаем буквы, цифры, пробелы, дефисы, точки, апострофы, скобки, запятые
+                                                                                
     allowed_chars = set(
         "abcdefghijklmnopqrstuvwxyzабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ0123456789 -.'(),"

@@ -4,7 +4,7 @@ from domain.interfaces.unit_of_work import UnitOfWork
 
 
 async def set_water_goal_mode(user_id: int, mode: str, uow: UnitOfWork) -> None:
-    """Установить режим цели по воде: 'auto' или 'manual'."""
+    
     if mode not in ("auto", "manual"):
         raise ValueError("Mode must be 'auto' or 'manual'")
 

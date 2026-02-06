@@ -1,4 +1,4 @@
-"""Базовые модели валидации с использованием Pydantic."""
+
 
 from decimal import Decimal
 from typing import Union
@@ -9,7 +9,7 @@ from domain.exceptions import ValidationError
 
 
 class NumericInput(BaseModel):
-    """Базовая модель для валидации числового ввода из строки."""
+    
     min_val: float
     max_val: float
     allow_zero: bool = True
@@ -19,25 +19,25 @@ class NumericInput(BaseModel):
     @field_validator('text')
     @classmethod
     def validate_text(cls, v: str, info) -> float:
-        """Преобразует текст в число и проверяет диапазон."""
+        
         field_name = info.data.get('field_name', 'значение')
         min_val = info.data.get('min_val')
         max_val = info.data.get('max_val')
         allow_zero = info.data.get('allow_zero', True)
 
-        # Защита от некорректной конфигурации валидатора
+                                                        
         if min_val is None:
             raise RuntimeError(f"min_val не может быть None для поля '{field_name}'")
         if max_val is None:
             raise RuntimeError(f"max_val не может быть None для поля '{field_name}'")
 
-        # Преобразуем текст в число
+                                   
         try:
             value = float(v)
         except ValueError:
             raise ValueError(f"{field_name} должно быть числом")
 
-        # Проверка диапазона
+                            
         if min_val == 0 and not allow_zero and value == 0:
             raise ValueError(f"{field_name} должен быть больше 0")
 
@@ -57,7 +57,7 @@ def create_numeric_validator(
     allow_zero: bool = True,
     field: str = None
 ):
-    """Создаёт функцию-валидатор для числового ввода."""
+    
     if min_val is None or max_val is None:
         raise RuntimeError(f"min_val и max_val не могут быть None для валидатора '{field_name}'")
     if min_val > max_val:
@@ -71,7 +71,7 @@ def create_numeric_validator(
                 max_val=max_val,
                 allow_zero=allow_zero
             )
-            return model.text  # после валидации это float
+            return model.text                             
         except PydanticValidationError as e:
             raise ValidationError(str(e.errors()[0]['msg']), field=field)
     return validator

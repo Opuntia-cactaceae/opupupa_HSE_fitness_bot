@@ -12,9 +12,9 @@ async def finalize_workout_log(
     kcal_burned: float,
     water_bonus_ml: int,
     uow: UnitOfWork,
-) -> None:
-    """Записать WorkoutLog и обновить дневную статистику."""
-    # Создать WorkoutLog
+) -> int:
+    
+                        
     workout_log = WorkoutLog(
         id=0,
         user_id=user_id,
@@ -27,7 +27,7 @@ async def finalize_workout_log(
     )
     await uow.workout_logs.add(workout_log)
 
-    # Обновить DailyStats
+                         
     today = date.today()
     await ensure_daily_stats(user_id, uow)
     daily_stats = await uow.daily_stats.get(user_id, today)
@@ -35,3 +35,4 @@ async def finalize_workout_log(
     daily_stats.water_goal_ml += water_bonus_ml
     daily_stats.updated_at = datetime.utcnow()
     await uow.daily_stats.update(daily_stats)
+    return workout_log.id

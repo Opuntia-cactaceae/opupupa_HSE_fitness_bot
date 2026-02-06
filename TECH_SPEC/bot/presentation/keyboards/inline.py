@@ -1,14 +1,14 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import date
 
-
+#тут клавиатуры
 def _normalize_parent_context(parent_context: str) -> str:
-    """Return 'main_menu' if parent_context is empty string, otherwise return parent_context."""
+    
     return parent_context if parent_context != "" else "main_menu"
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню бота."""
+    
     buttons = [
         [
             InlineKeyboardButton(text="⚙️ Настройка профиля", callback_data="profile_setup:main_menu"),
@@ -22,6 +22,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📊 Показать прогресс", callback_data="progress_show:main_menu"),
         ],
         [
+            InlineKeyboardButton(text="📈 Графики", callback_data="charts_show:main_menu"),
+        ],
+        [
             InlineKeyboardButton(text="📅 Недельная статистика", callback_data=f"progress_weekly_show:{date.today().isoformat()}"),
         ],
     ]
@@ -29,7 +32,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
 
 def profile_setup_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура настройки профиля."""
+    
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
@@ -55,7 +58,7 @@ def profile_setup_keyboard(parent_context: str = "main_menu") -> InlineKeyboardM
 
 
 def water_volume_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура выбора объёма воды."""
+    
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
@@ -77,7 +80,7 @@ def water_volume_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMa
 
 
 def food_type_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура выбора типа еды (пример)."""
+    
     buttons = [
         [
             InlineKeyboardButton(text="Завтрак", callback_data="food_breakfast"),
@@ -94,8 +97,20 @@ def food_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def food_product_confirmation_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
+    
+    parent_context = _normalize_parent_context(parent_context)
+    buttons = [
+        [
+            InlineKeyboardButton(text="❌ Не тот продукт", callback_data=f"food_reject:{parent_context}"),
+            InlineKeyboardButton(text="◀️ Отмена", callback_data=f"food_cancel:{parent_context}"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def workout_type_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура выбора типа тренировки."""
+    
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
@@ -114,7 +129,7 @@ def workout_type_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMa
 
 
 def calorie_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура выбора режима цели калорий."""
+    
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
@@ -129,7 +144,7 @@ def calorie_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeybo
 
 
 def water_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура выбора режима цели по воде."""
+    
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
@@ -144,7 +159,7 @@ def water_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboar
 
 
 def weekly_stats_keyboard(reference_date: date) -> InlineKeyboardMarkup:
-    """Клавиатура навигации по недельной статистике."""
+    
     from datetime import timedelta
     prev_week = reference_date - timedelta(days=7)
     next_week = reference_date + timedelta(days=7)
@@ -168,7 +183,7 @@ def weekly_stats_keyboard(reference_date: date) -> InlineKeyboardMarkup:
 
 
 def progress_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
-    """Клавиатура экрана прогресса на сегодня."""
+    
     from datetime import date
     parent_context = _normalize_parent_context(parent_context)
     buttons = [
@@ -181,6 +196,21 @@ def progress_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup
         [
             InlineKeyboardButton(text="⬅️ Назад",
                                  callback_data=parent_context if parent_context != "profile_setup" else "profile_setup:main_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def charts_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
+    
+    parent_context = _normalize_parent_context(parent_context)
+    buttons = [
+        [
+            InlineKeyboardButton(text="7 дней", callback_data=f"charts_period_7:{parent_context}"),
+            InlineKeyboardButton(text="30 дней", callback_data=f"charts_period_30:{parent_context}"),
+        ],
+        [
+            InlineKeyboardButton(text="◀️ Назад", callback_data=parent_context),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

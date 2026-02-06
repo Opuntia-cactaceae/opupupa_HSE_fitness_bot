@@ -6,12 +6,13 @@ from aiogram.fsm.context import FSMContext
 from presentation.fsm.states import WorkoutLogStates
 from presentation.keyboards.inline import main_menu_keyboard, workout_type_keyboard, profile_setup_keyboard
 from presentation.validators.workout import validate_workout_minutes
-from domain.exceptions import ValidationError
+from domain.exceptions import ValidationError, EntityNotFoundError
 from infrastructure.config.database import AsyncSessionFactory
 from infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from application.use_cases.workout.set_workout_type import get_workout_met
 from application.use_cases.workout.set_workout_minutes import calculate_workout_calories_and_water
 from application.use_cases.workout.finalize_workout_log import finalize_workout_log
+from application.use_cases.workout.delete_workout_log import delete_workout_log
 from presentation.services.menu_manager import show_menu, replace_menu_message, send_menu_new
 from presentation.services.keyboard_mapper import get_keyboard_for_parent_context, get_callback_data_for_parent_context
 
@@ -20,12 +21,12 @@ router = Router()
 
 @router.callback_query(F.data.startswith("workout_add"))
 async def callback_workout_add(callback: CallbackQuery, state: FSMContext):
-    """Начало логирования тренировки."""
-    # Parse parent context from callback data (format: "workout_add" or "workout_add:parent")
+    
+                                                                                             
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
+                                       
     await state.update_data(parent_context=parent_context)
     await state.set_state(WorkoutLogStates.select_workout_type)
     await replace_menu_message(
@@ -39,8 +40,8 @@ async def callback_workout_add(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(StateFilter(WorkoutLogStates.select_workout_type), F.data.startswith("workout_"))
 async def callback_workout_type(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора типа тренировки."""
-    # Parse callback data (format: "workout_running" or "workout_running:parent")
+    
+                                                                                 
     parts = callback.data.split(":")
     workout_key = parts[0]
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
@@ -56,17 +57,17 @@ async def callback_workout_type(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Неизвестный тип тренировки")
         return
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Сохраняем тип тренировки и родительский контекст в состоянии
+                                                                  
     await state.update_data(workout_type=workout_type, parent_context=parent_context, profile_setup_parent=profile_setup_parent)
 
-    # Переходим к вводу минут
+                             
     await state.set_state(WorkoutLogStates.enter_minutes)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -86,12 +87,12 @@ async def callback_workout_type(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(WorkoutLogStates.enter_minutes), F.text)
 async def process_workout_minutes_input(message: Message, state: FSMContext):
-    """Обработка ввода длительности тренировки."""
-    # Валидация ввода
+    
+                     
     try:
         minutes = validate_workout_minutes(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         workout_type = data.get("workout_type", "бег")
         parent_context = data.get("parent_context") or "main_menu"
@@ -110,17 +111,18 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
         )
         return
 
-    # Получаем сохранённый тип тренировки из состояния
+                                                      
     data = await state.get_data()
-    workout_type = data.get("workout_type", "бег")  # значение по умолчанию
+    workout_type = data.get("workout_type", "бег")                         
     parent_context = data.get("parent_context") or "main_menu"
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+    log_id = None
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
-        # Получаем пользователя для расчёта калорий
+                                                   
         user = await uow.users.get(message.from_user.id)
         if user is None:
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await show_menu(
@@ -132,7 +134,7 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None, workout_type=None)
             return
 
@@ -142,7 +144,7 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
                 weight_kg, workout_type, minutes
             )
         except ValidationError as e:
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
             await show_menu(
                 bot=message.bot,
@@ -154,7 +156,7 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
             )
             return
 
-        await finalize_workout_log(
+        log_id = await finalize_workout_log(
             user_id=message.from_user.id,
             workout_type=workout_type,
             minutes=minutes,
@@ -163,13 +165,17 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
             uow=uow,
         )
 
-    # Determine which keyboard to show based on parent context
+                                                              
     if parent_context == "main_menu":
         keyboard = main_menu_keyboard()
     elif parent_context == "profile_setup":
         keyboard = profile_setup_keyboard(parent_context="main_menu")
     else:
-        keyboard = main_menu_keyboard()  # Fallback
+        keyboard = main_menu_keyboard()            
+                              
+    rows = keyboard.inline_keyboard.copy()
+    rows.append([InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_workout:{log_id}:{parent_context}")])
+    keyboard_with_delete = InlineKeyboardMarkup(inline_keyboard=rows)
 
     await send_menu_new(
         bot=message.bot,
@@ -181,10 +187,42 @@ async def process_workout_minutes_input(message: Message, state: FSMContext):
             f"Сожжено калорий: {kcal_burned:.1f}\n"
             f"Дополнительная вода: {water_bonus_ml} мл"
         ),
-        keyboard=keyboard,
+        keyboard=keyboard_with_delete,
         state=state,
         return_menu=parent_context,
     )
     await state.clear()
 
 
+@router.callback_query(F.data.startswith("delete_workout"))
+async def callback_delete_workout(callback: CallbackQuery, state: FSMContext):
+    
+                                                                              
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("Неверный формат")
+        return
+    log_id = int(parts[1])
+    parent_context = parts[2] if parts[2] != "" else "main_menu"
+
+    try:
+        async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+            await delete_workout_log(log_id, callback.from_user.id, uow)
+    except EntityNotFoundError:
+        await callback.answer("Запись не найдена")
+        return
+
+                                                             
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+                                                              
+    keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
+
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="🏃‍♂️ Запись удалена",
+        keyboard=keyboard,
+        state=state,
+        return_menu=parent_context,
+    )

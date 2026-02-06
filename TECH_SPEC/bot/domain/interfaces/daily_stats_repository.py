@@ -24,10 +24,8 @@ class DailyStatsRepository(ABC):
 
     @abstractmethod
     async def get_or_create(self, user_id: int, date: date) -> DailyStats:
-        """Получить или создать DailyStats для пользователя на указанную дату."""
         pass
 
     @abstractmethod
     async def get_for_user_in_range(self, user_id: int, date_from: date, date_to: date) -> List[DailyStats]:
-        """Получить все DailyStats пользователя за указанный период (включительно)."""
         pass

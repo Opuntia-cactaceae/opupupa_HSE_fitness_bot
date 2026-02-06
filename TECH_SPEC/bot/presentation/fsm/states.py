@@ -2,7 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class SetProfileStates(StatesGroup):
-    """Состояния для настройки профиля."""
+    
     set_weight = State()
     set_height = State()
     set_age = State()
@@ -13,17 +13,17 @@ class SetProfileStates(StatesGroup):
 
 
 class FoodLogStates(StatesGroup):
-    """Состояния для логирования еды."""
+    
     enter_product_name = State()
     enter_grams = State()
 
 
 class WorkoutLogStates(StatesGroup):
-    """Состояния для логирования тренировок."""
+    
     select_workout_type = State()
     enter_minutes = State()
 
 
 class WaterLogStates(StatesGroup):
-    """Состояния для логирования воды."""
+    
     enter_ml = State()

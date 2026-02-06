@@ -33,9 +33,12 @@ class WaterLogRepositoryImpl(WaterLogRepository):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def add(self, water_log: WaterLog) -> None:
+    async def add(self, water_log: WaterLog) -> int:
         model = to_model(water_log)
         self._session.add(model)
+        await self._session.flush()
+        water_log.id = model.id
+        return model.id
 
     async def get_by_user_and_date(self, user_id: int, date: date) -> list[WaterLog]:
         stmt = select(WaterLogModel).where(
@@ -44,6 +47,14 @@ class WaterLogRepositoryImpl(WaterLogRepository):
         result = await self._session.execute(stmt)
         models = result.scalars().all()
         return [to_domain(model) for model in models]
+
+    async def get_by_id(self, water_log_id: int) -> WaterLog | None:
+        stmt = select(WaterLogModel).where(WaterLogModel.id == water_log_id)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return to_domain(model)
 
     async def delete(self, water_log_id: int) -> None:
         stmt = select(WaterLogModel).where(WaterLogModel.id == water_log_id)

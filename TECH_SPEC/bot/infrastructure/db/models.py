@@ -11,7 +11,7 @@ class Base(DeclarativeBase):
 class UserModel(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # Telegram user_id
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -23,9 +23,9 @@ class UserModel(Base):
     activity_minutes_per_day: Mapped[int] = mapped_column(Integer, default=0)
     city: Mapped[str] = mapped_column(Text, default="")
     timezone: Mapped[str] = mapped_column(Text, default="Europe/Amsterdam")
-    calorie_goal_mode: Mapped[str] = mapped_column(Text, default="auto")  # "auto" | "manual"
+    calorie_goal_mode: Mapped[str] = mapped_column(Text, default="auto")
     calorie_goal_kcal_manual: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    water_goal_mode: Mapped[str] = mapped_column(Text, default="auto")  # "auto" | "manual"
+    water_goal_mode: Mapped[str] = mapped_column(Text, default="auto")
     water_goal_ml_manual: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
@@ -58,7 +58,7 @@ class FoodLogModel(Base):
     logged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     product_query: Mapped[str] = mapped_column(Text)
     product_name: Mapped[str] = mapped_column(Text)
-    source: Mapped[str] = mapped_column(Text)  # e.g., "openfoodfacts"
+    source: Mapped[str] = mapped_column(Text)
     product_external_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     kcal_per_100g: Mapped[float] = mapped_column(Float, default=0.0)
     grams: Mapped[float] = mapped_column(Float, default=0.0)
@@ -72,7 +72,7 @@ class WorkoutLogModel(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     logged_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    workout_type: Mapped[str] = mapped_column(Text)  # e.g., "бег", "ходьба", "силовая"
+    workout_type: Mapped[str] = mapped_column(Text)
     minutes: Mapped[int] = mapped_column(Integer)
     kcal_burned: Mapped[float] = mapped_column(Float, default=0.0)
     water_bonus_ml: Mapped[int] = mapped_column(Integer, default=0)

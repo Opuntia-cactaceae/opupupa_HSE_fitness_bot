@@ -2,11 +2,13 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard, progress_keyboard
+from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard, progress_keyboard, charts_keyboard
 from infrastructure.config.database import AsyncSessionFactory
 from infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from application.use_cases.progress.check_progress import check_progress
 from application.use_cases.progress.get_weekly_stats import get_weekly_stats
+from application.use_cases.progress.get_progress_chart_data import get_progress_chart_data
+from infrastructure.charts.progress_charts import build_progress_charts_png
 from presentation.services.menu_manager import replace_menu_message
 
 router = Router()
@@ -14,8 +16,8 @@ router = Router()
 
 @router.callback_query(F.data.startswith("progress_show"))
 async def callback_progress_show(callback: CallbackQuery, state: FSMContext):
-    """Показать прогресс по всем параметрам."""
-    # Parse parent context from callback data (format: "progress_show" or "progress_show:parent")
+    
+                                                                                                 
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
@@ -52,13 +54,13 @@ async def callback_progress_show(callback: CallbackQuery, state: FSMContext):
         else:
             message += "⚖️ Баланс калорий нейтральный."
 
-        # Determine which keyboard to show based on parent context
+                                                                  
         if parent_context == "main_menu":
             keyboard = progress_keyboard(parent_context)
         elif parent_context == "profile_setup":
             keyboard = profile_setup_keyboard(parent_context="main_menu")
         else:
-            keyboard = main_menu_keyboard()  # Fallback
+            keyboard = main_menu_keyboard()            
 
         await replace_menu_message(
             message_or_callback=callback,
@@ -71,10 +73,10 @@ async def callback_progress_show(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("progress_weekly_show"))
 async def callback_progress_weekly_show(callback: CallbackQuery, state: FSMContext):
-    """Показать недельную статистику."""
+    
     from datetime import date, timedelta
 
-    # Parse reference date from callback data (format: "progress_weekly_show:YYYY-MM-DD")
+                                                                                         
     parts = callback.data.split(":")
     if len(parts) > 1:
         try:
@@ -89,18 +91,18 @@ async def callback_progress_weekly_show(callback: CallbackQuery, state: FSMConte
             callback.from_user.id, reference_date, uow
         )
 
-        # Build message
+                       
         message = f"📅 **Неделя:** {week_start.strftime('%d.%m')} – {week_end.strftime('%d.%m')}\n\n"
 
-        # Prepare dict of existing stats by date for quick lookup
+                                                                 
         stats_by_date = {stats.date: stats for stats in daily_stats_list}
 
-        # Iterate through each day of the week (Monday to Sunday)
+                                                                 
         for day_offset in range(7):
             day_date = week_start + timedelta(days=day_offset)
             stats = stats_by_date.get(day_date)
 
-            # Day header
+                        
             day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
             message += f"{day_names[day_offset]} {day_date.strftime('%d.%m')}\n"
 
@@ -113,7 +115,7 @@ async def callback_progress_weekly_show(callback: CallbackQuery, state: FSMConte
                 calorie_goal = stats.calorie_goal_kcal
                 calories_burned = stats.calories_burned_kcal
                 calorie_balance = stats.calorie_balance_kcal
-                water_burned = 0  # TODO: calculate water burned from workouts
+                water_burned = 0                                              
 
                 message += (
                     f"💧 {water_logged} / {water_goal} мл\n"
@@ -128,4 +130,54 @@ async def callback_progress_weekly_show(callback: CallbackQuery, state: FSMConte
             keyboard=keyboard,
             state=state,
             return_menu="main_menu",
+        )
+
+
+@router.callback_query(F.data.startswith("charts_show"))
+async def callback_charts_show(callback: CallbackQuery, state: FSMContext):
+    
+    parts = callback.data.split(":")
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
+
+    keyboard = charts_keyboard(parent_context)
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Выберите период для графиков:",
+        keyboard=keyboard,
+        state=state,
+        return_menu=parent_context,
+    )
+
+
+@router.callback_query(F.data.startswith("charts_period_"))
+async def callback_charts_period(callback: CallbackQuery, state: FSMContext):
+    
+    parts = callback.data.split(":")
+    period_str = parts[0].split("_")[-1]                            
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
+
+    try:
+        period_days = int(period_str)
+    except ValueError:
+        period_days = 7
+
+    async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
+        daily_stats = await get_progress_chart_data(callback.from_user.id, period_days, uow)
+
+        png_bytes = build_progress_charts_png(daily_stats)
+
+                                                    
+        await callback.message.answer_photo(
+            photo=png_bytes,
+            caption=f"Графики прогресса за {period_days} дней",
+        )
+
+                                                              
+        keyboard = charts_keyboard(parent_context)
+        await replace_menu_message(
+            message_or_callback=callback,
+            text=f"Графики за {period_days} дней отправлены. Выберите другой период:",
+            keyboard=keyboard,
+            state=state,
+            return_menu=parent_context,
         )

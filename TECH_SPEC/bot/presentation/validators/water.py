@@ -1,4 +1,4 @@
-"""Валидаторы для сценариев трекинга воды."""
+
 
 from .base import create_numeric_validator
 from domain.exceptions import ValidationError

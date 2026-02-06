@@ -82,7 +82,6 @@ class DailyStatsRepositoryImpl(DailyStatsRepository):
         if existing:
             return existing
         from datetime import datetime
-        # Create model directly to avoid setting id=0
         model = DailyStatsModel(
             user_id=user_id,
             date=date,
@@ -90,8 +89,7 @@ class DailyStatsRepositoryImpl(DailyStatsRepository):
             updated_at=datetime.utcnow(),
         )
         self._session.add(model)
-        await self._session.flush()  # generate ID
-        # Now convert to domain entity
+        await self._session.flush()
         return to_domain(model)
 
     async def get_for_user_in_range(self, user_id: int, date_from: date, date_to: date) -> List[DailyStats]:

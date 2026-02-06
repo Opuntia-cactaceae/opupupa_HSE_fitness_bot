@@ -1,4 +1,4 @@
-"""Валидаторы для сценариев настройки профиля с использованием Pydantic моделей."""
+
 
 from .base import create_numeric_validator
 from domain.exceptions import ValidationError
@@ -54,7 +54,7 @@ validate_water_goal = create_numeric_validator(
 
 
 def validate_city(text: str) -> str:
-    """Валидация названия города."""
+    
     city = text.strip()
 
     if not city:
@@ -63,7 +63,7 @@ def validate_city(text: str) -> str:
     if len(city) < 2 or len(city) > 64:
         raise ValidationError("Название города должно быть от 2 до 64 символов", field='city')
 
-    # Разрешаем буквы, пробелы, дефисы, точки, возможно апострофы
+                                                                 
     allowed_chars = set(
         "abcdefghijklmnopqrstuvwxyzабвгдеёжзийклмнопрстуфхцчшщъыьэюя"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ -.'"

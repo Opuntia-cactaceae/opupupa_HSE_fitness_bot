@@ -42,13 +42,13 @@ router = Router()
 
 
 async def get_formatted_profile_text(user_id: int, uow: SqlAlchemyUnitOfWork) -> str:
-    """Возвращает отформатированный текст текущего профиля."""
+    
     user = await uow.users.get(user_id)
 
     if user is None:
         return "📋 Профиль не настроен.\n⬇️ Выберите параметр для изменения:"
 
-    # Форматируем значения
+                          
     weight_text = f"{user.weight_kg} кг" if user.weight_kg > 0 else "не задано"
     height_text = f"{user.height_cm} см" if user.height_cm > 0 else "не задано"
     age_text = f"{user.age_years}" if user.age_years > 0 else "не задано"
@@ -80,7 +80,7 @@ async def get_formatted_profile_text(user_id: int, uow: SqlAlchemyUnitOfWork) ->
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    """Обработчик команды /start."""
+    
     await message.answer(
         "Добро пожаловать в бот для трекинга здоровья!",
         reply_markup=main_menu_keyboard(),
@@ -89,7 +89,7 @@ async def cmd_start(message: Message):
 
 @router.message(Command("set_profile"))
 async def cmd_set_profile(message: Message):
-    """Обработчик команды /set_profile (входная точка)."""
+    
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await start_set_profile(message.from_user.id, uow)
         profile_text = await get_formatted_profile_text(message.from_user.id, uow)
@@ -102,11 +102,11 @@ async def cmd_set_profile(message: Message):
 
 @router.callback_query(F.data.startswith("profile_setup"))
 async def callback_profile_setup(callback: CallbackQuery, state: FSMContext):
-    """Переход к настройке профиля."""
-    # Parse parent context from callback data (format: "profile_setup" or "profile_setup:parent")
+    
+                                                                                                 
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
-    # Store parent context for profile setup menu (needed for nested navigation)
+                                                                                
     await state.update_data(profile_setup_parent=parent_context)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
@@ -123,20 +123,20 @@ async def callback_profile_setup(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_weight"))
 async def callback_set_weight(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода веса."""
-    # Parse parent context from callback data (format: "profile_set_weight" or "profile_set_weight:parent")
+    
+                                                                                                           
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_weight)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -153,12 +153,12 @@ async def callback_set_weight(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SetProfileStates.set_weight), F.text)
 async def process_weight_input(message: Message, state: FSMContext):
-    """Обработка ввода веса."""
-    # Валидация ввода
+    
+                     
     try:
         weight = validate_weight(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -179,11 +179,11 @@ async def process_weight_input(message: Message, state: FSMContext):
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_weight(message.from_user.id, weight, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -195,10 +195,10 @@ async def process_weight_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -220,20 +220,20 @@ async def process_weight_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_height"))
 async def callback_set_height(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода роста."""
-    # Parse parent context from callback data (format: "profile_set_height" or "profile_set_height:parent")
+    
+                                                                                                           
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_height)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -250,12 +250,12 @@ async def callback_set_height(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SetProfileStates.set_height), F.text)
 async def process_height_input(message: Message, state: FSMContext):
-    """Обработка ввода роста."""
-    # Валидация ввода
+    
+                     
     try:
         height = validate_height(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -276,11 +276,11 @@ async def process_height_input(message: Message, state: FSMContext):
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_height(message.from_user.id, height, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -292,10 +292,10 @@ async def process_height_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -315,20 +315,20 @@ async def process_height_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_age"))
 async def callback_set_age(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода возраста."""
-    # Parse parent context from callback data (format: "profile_set_age" or "profile_set_age:parent")
+    
+                                                                                                     
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_age)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -345,12 +345,12 @@ async def callback_set_age(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SetProfileStates.set_age), F.text)
 async def process_age_input(message: Message, state: FSMContext):
-    """Обработка ввода возраста."""
-    # Валидация ввода
+    
+                     
     try:
         age = validate_age(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -371,11 +371,11 @@ async def process_age_input(message: Message, state: FSMContext):
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_age(message.from_user.id, age, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -387,10 +387,10 @@ async def process_age_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -410,20 +410,20 @@ async def process_age_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_activity"))
 async def callback_set_activity_minutes(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода минут активности."""
-    # Parse parent context from callback data (format: "profile_set_activity" or "profile_set_activity:parent")
+    
+                                                                                                               
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_activity_minutes)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -440,12 +440,12 @@ async def callback_set_activity_minutes(callback: CallbackQuery, state: FSMConte
 
 @router.message(StateFilter(SetProfileStates.set_activity_minutes), F.text)
 async def process_activity_minutes_input(message: Message, state: FSMContext):
-    """Обработка ввода минут активности."""
-    # Валидация ввода
+    
+                     
     try:
         minutes = validate_activity_minutes(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -466,11 +466,11 @@ async def process_activity_minutes_input(message: Message, state: FSMContext):
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_activity_minutes(message.from_user.id, minutes, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -482,10 +482,10 @@ async def process_activity_minutes_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -505,20 +505,20 @@ async def process_activity_minutes_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_city"))
 async def callback_set_city(callback: CallbackQuery, state: FSMContext):
-    """Запрос ввода города."""
-    # Parse parent context from callback data (format: "profile_set_city" or "profile_set_city:parent")
+    
+                                                                                                       
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_city)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -535,8 +535,8 @@ async def callback_set_city(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SetProfileStates.set_city), F.text)
 async def process_city_input(message: Message, state: FSMContext):
-    """Обработка ввода города."""
-    # Validation
+    
+                
     try:
         city = validate_city(message.text)
     except ValidationError as e:
@@ -545,11 +545,11 @@ async def process_city_input(message: Message, state: FSMContext):
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_city(message.from_user.id, city, uow)
-        # Get parent context and profile_setup_parent from state before clearing
+                                                                                
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-        # Determine which keyboard to show based on parent context
+                                                                  
         keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
         await send_menu_new(
@@ -565,8 +565,8 @@ async def process_city_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("profile_set_calorie_goal"))
 async def callback_set_calorie_goal(callback: CallbackQuery, state: FSMContext):
-    """Переход к выбору режима цели калорий."""
-    # Parse parent context from callback data (format: "profile_set_calorie_goal" or "profile_set_calorie_goal:parent")
+    
+                                                                                                                       
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
@@ -581,7 +581,7 @@ async def callback_set_calorie_goal(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("calorie_goal_auto"))
 async def callback_calorie_goal_auto(callback: CallbackQuery, state: FSMContext):
-    """Установить автоматический режим цели калорий."""
+    
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
@@ -600,22 +600,22 @@ async def callback_calorie_goal_auto(callback: CallbackQuery, state: FSMContext)
 
 @router.callback_query(F.data.startswith("calorie_goal_manual"))
 async def callback_calorie_goal_manual(callback: CallbackQuery, state: FSMContext):
-    """Установить ручной режим цели калорий и запросить ввод."""
+    
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_calorie_goal_manual)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_calorie_goal_mode(callback.from_user.id, "manual", uow)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -632,7 +632,7 @@ async def callback_calorie_goal_manual(callback: CallbackQuery, state: FSMContex
 
 @router.callback_query(F.data.startswith("profile_set_water_goal"))
 async def callback_set_water_goal(callback: CallbackQuery, state: FSMContext):
-    """Переход к выбору режима цели по воде."""
+    
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
@@ -647,7 +647,7 @@ async def callback_set_water_goal(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("water_goal_auto"))
 async def callback_water_goal_auto(callback: CallbackQuery, state: FSMContext):
-    """Установить автоматический режим цели по воде."""
+    
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
@@ -666,22 +666,22 @@ async def callback_water_goal_auto(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("water_goal_manual"))
 async def callback_water_goal_manual(callback: CallbackQuery, state: FSMContext):
-    """Установить ручной режим цели по воде и запросить ввод."""
+    
     parts = callback.data.split(":")
     parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Retrieve profile_setup_parent from state (if available)
+                                                             
     data = await state.get_data()
     profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
 
-    # Store parent context and profile_setup_parent in FSM state
+                                                                
     await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_water_goal_manual)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_water_goal_mode(callback.from_user.id, "manual", uow)
 
-    # Create cancel button with appropriate callback data
+                                                         
     cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
@@ -698,12 +698,12 @@ async def callback_water_goal_manual(callback: CallbackQuery, state: FSMContext)
 
 @router.message(StateFilter(SetProfileStates.set_calorie_goal_manual), F.text)
 async def process_calorie_goal_manual_input(message: Message, state: FSMContext):
-    """Обработка ввода цели по калориям."""
-    # Валидация ввода
+    
+                     
     try:
         calories = validate_calorie_goal(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -724,11 +724,11 @@ async def process_calorie_goal_manual_input(message: Message, state: FSMContext)
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_calorie_goal_manual(message.from_user.id, calories, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -740,10 +740,10 @@ async def process_calorie_goal_manual_input(message: Message, state: FSMContext)
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -763,12 +763,12 @@ async def process_calorie_goal_manual_input(message: Message, state: FSMContext)
 
 @router.message(StateFilter(SetProfileStates.set_water_goal_manual), F.text)
 async def process_water_goal_manual_input(message: Message, state: FSMContext):
-    """Обработка ввода цели по воде."""
-    # Валидация ввода
+    
+                     
     try:
         water_ml = validate_water_goal(message.text)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -789,11 +789,11 @@ async def process_water_goal_manual_input(message: Message, state: FSMContext):
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_water_goal_manual(message.from_user.id, water_ml, uow)
-            # Get parent context and profile_setup_parent from state before clearing
+                                                                                    
             data = await state.get_data()
             parent_context = data.get("parent_context") or "main_menu"
             profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
-            # Determine which keyboard to show based on parent context
+                                                                      
             keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
             await send_menu_new(
@@ -805,10 +805,10 @@ async def process_water_goal_manual_input(message: Message, state: FSMContext):
                 return_menu=parent_context,
             )
             await state.set_state(None)
-            # Remove temporary keys but keep menu_manager keys
+                                                              
             await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        # Edit the existing menu message to show error
+                                                      
         data = await state.get_data()
         parent_context = data.get("parent_context") or "main_menu"
         profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
@@ -828,7 +828,7 @@ async def process_water_goal_manual_input(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "main_menu")
 async def callback_main_menu(callback: CallbackQuery, state: FSMContext):
-    """Возврат в главное меню."""
+    
     await replace_menu_message(
         message_or_callback=callback,
         text="Главное меню:",

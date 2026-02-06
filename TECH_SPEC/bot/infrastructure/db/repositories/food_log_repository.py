@@ -45,9 +45,12 @@ class FoodLogRepositoryImpl(FoodLogRepository):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def add(self, food_log: FoodLog) -> None:
+    async def add(self, food_log: FoodLog) -> int:
         model = to_model(food_log)
         self._session.add(model)
+        await self._session.flush()
+        food_log.id = model.id
+        return model.id
 
     async def get_by_user_and_date(self, user_id: int, date: date) -> list[FoodLog]:
         stmt = select(FoodLogModel).where(
@@ -56,6 +59,14 @@ class FoodLogRepositoryImpl(FoodLogRepository):
         result = await self._session.execute(stmt)
         models = result.scalars().all()
         return [to_domain(model) for model in models]
+
+    async def get_by_id(self, food_log_id: int) -> FoodLog | None:
+        stmt = select(FoodLogModel).where(FoodLogModel.id == food_log_id)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return to_domain(model)
 
     async def delete(self, food_log_id: int) -> None:
         stmt = select(FoodLogModel).where(FoodLogModel.id == food_log_id)

@@ -39,9 +39,12 @@ class WorkoutLogRepositoryImpl(WorkoutLogRepository):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def add(self, workout_log: WorkoutLog) -> None:
+    async def add(self, workout_log: WorkoutLog) -> int:
         model = to_model(workout_log)
         self._session.add(model)
+        await self._session.flush()
+        workout_log.id = model.id
+        return model.id
 
     async def get_by_user_and_date(self, user_id: int, date: date) -> list[WorkoutLog]:
         stmt = select(WorkoutLogModel).where(
@@ -50,6 +53,14 @@ class WorkoutLogRepositoryImpl(WorkoutLogRepository):
         result = await self._session.execute(stmt)
         models = result.scalars().all()
         return [to_domain(model) for model in models]
+
+    async def get_by_id(self, workout_log_id: int) -> WorkoutLog | None:
+        stmt = select(WorkoutLogModel).where(WorkoutLogModel.id == workout_log_id)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        return to_domain(model)
 
     async def delete(self, workout_log_id: int) -> None:
         stmt = select(WorkoutLogModel).where(WorkoutLogModel.id == workout_log_id)

@@ -7,11 +7,15 @@ from domain.entities.water_log import WaterLog
 
 class WaterLogRepository(ABC):
     @abstractmethod
-    async def add(self, water_log: WaterLog) -> None:
+    async def add(self, water_log: WaterLog) -> int:
         pass
 
     @abstractmethod
     async def get_by_user_and_date(self, user_id: int, date: date) -> List[WaterLog]:
+        pass
+
+    @abstractmethod
+    async def get_by_id(self, water_log_id: int) -> WaterLog | None:
         pass
 
     @abstractmethod
