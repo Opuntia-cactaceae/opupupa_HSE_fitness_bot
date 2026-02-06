@@ -27,8 +27,7 @@ async def finalize_workout_log(
 
                          
     today = date.today()
-    await ensure_daily_stats(user_id, uow)
-    daily_stats = await uow.daily_stats.get(user_id, today)
+    daily_stats = await uow.daily_stats.get_or_create(user_id, today)
     daily_stats.calories_burned_kcal += int(kcal_burned)
     daily_stats.water_goal_ml += water_bonus_ml
     daily_stats.updated_at = datetime.utcnow()

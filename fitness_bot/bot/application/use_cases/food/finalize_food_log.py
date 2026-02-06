@@ -56,8 +56,7 @@ async def finalize_food_log(
 
                          
     today = date.today()
-    await ensure_daily_stats(user_id, uow)
-    daily_stats = await uow.daily_stats.get(user_id, today)
+    daily_stats = await uow.daily_stats.get_or_create(user_id, today)
     daily_stats.calories_consumed_kcal += int(kcal_total)
     daily_stats.updated_at = datetime.utcnow()
     await uow.daily_stats.update(daily_stats)

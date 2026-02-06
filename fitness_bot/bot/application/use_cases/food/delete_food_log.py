@@ -42,8 +42,7 @@ async def delete_food_log(log_id: int, user_id: int, uow: UnitOfWork) -> None:
     await uow.food_logs.delete(log_id)
 
                          
-    await ensure_daily_stats(log_user_id, uow)
-    daily_stats = await uow.daily_stats.get(log_user_id, log_date)
+    daily_stats = await uow.daily_stats.get_or_create(log_user_id, log_date)
     daily_stats.calories_consumed_kcal -= int(kcal_total)
     daily_stats.updated_at = datetime.utcnow()
     await uow.daily_stats.update(daily_stats)

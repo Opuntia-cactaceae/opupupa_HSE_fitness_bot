@@ -22,8 +22,7 @@ async def delete_workout_log(log_id: int, user_id: int, uow: UnitOfWork) -> None
     await uow.workout_logs.delete(log_id)
 
                          
-    await ensure_daily_stats(log_user_id, uow)
-    daily_stats = await uow.daily_stats.get(log_user_id, log_date)
+    daily_stats = await uow.daily_stats.get_or_create(log_user_id, log_date)
     daily_stats.calories_burned_kcal -= int(kcal_burned)
     daily_stats.water_goal_ml -= water_bonus_ml
     daily_stats.updated_at = datetime.utcnow()

@@ -37,9 +37,9 @@ async def log_water(user_id: int, ml: int, uow: UnitOfWork) -> int:
     )
     await uow.water_logs.add(water_log)
 
-                         
+
     today = date.today()
-    daily_stats = await uow.daily_stats.get(user_id, today)
+    daily_stats = await uow.daily_stats.get_or_create(user_id, today)
     daily_stats.water_logged_ml += ml
     daily_stats.updated_at = datetime.utcnow()
     await uow.daily_stats.update(daily_stats)
