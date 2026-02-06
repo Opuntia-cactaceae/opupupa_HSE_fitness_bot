@@ -1,7 +1,7 @@
 from datetime import date, datetime
 import math
 from domain.interfaces.unit_of_work import UnitOfWork
-from infrastructure.ai.weather_client import WeatherClient
+from infrastructure.api.weather_client import WeatherClient
 from config.settings import settings
 
 

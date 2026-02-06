@@ -1,6 +1,6 @@
 from typing import Optional, Tuple
 
-from infrastructure.ai.food_client import FoodClient
+from infrastructure.api.food_client import FoodClient
 from config.settings import settings
 
 
