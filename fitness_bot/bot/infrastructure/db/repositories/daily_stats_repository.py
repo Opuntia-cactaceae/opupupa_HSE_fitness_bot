@@ -5,7 +5,8 @@ from sqlalchemy import select
 
 from domain.entities.daily_stats import DailyStats
 from domain.interfaces.daily_stats_repository import DailyStatsRepository
-from infrastructure.db.models import DailyStatsModel
+from infrastructure.db.models import DailyStatsModel, UserModel
+from .user_repository import to_domain as user_to_domain
 
 
 def to_domain(model: DailyStatsModel) -> DailyStats:
@@ -88,6 +89,11 @@ class DailyStatsRepositoryImpl(DailyStatsRepository):
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
+        user_model = await self._session.get(UserModel, user_id)
+        if user_model:
+            user = user_to_domain(user_model)
+            model.water_goal_ml = user.calculate_water_goal_ml(temperature_c=None)
+            model.calorie_goal_kcal = user.calculate_calorie_goal_kcal()
         self._session.add(model)
         await self._session.flush()
         return to_domain(model)
