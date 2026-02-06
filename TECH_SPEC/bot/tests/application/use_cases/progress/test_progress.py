@@ -25,13 +25,13 @@ class TestCheckProgress:
         sample_daily_stats.calories_burned_kcal = 400
         # calorie_balance_kcal should be 1400 (1800 - 400)
 
-        mock_uow.daily_stats.get.return_value = sample_daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
 
         # Assert
-        mock_uow.daily_stats.get.assert_called_once_with(user_id, today)
+        mock_uow.daily_stats.get_or_create.assert_called_once_with(user_id, today)
         assert result == {
             "water_logged_ml": 1500,
             "water_goal_ml": 2500,
@@ -46,13 +46,21 @@ class TestCheckProgress:
         """check_progress возвращает нули, если статистики нет."""
         # Arrange
         user_id = 12345
-        mock_uow.daily_stats.get.return_value = None
+        today = date.today()
+        new_daily_stats = DailyStats(
+            id=0,
+            user_id=user_id,
+            date=today,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        mock_uow.daily_stats.get_or_create.return_value = new_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
 
         # Assert
-        mock_uow.daily_stats.get.assert_called_once_with(user_id, date.today())
+        mock_uow.daily_stats.get_or_create.assert_called_once_with(user_id, today)
         assert result == {
             "water_logged_ml": 0,
             "water_goal_ml": 0,
@@ -78,7 +86,7 @@ class TestCheckProgress:
         sample_daily_stats.calories_burned_kcal = 300
         # calorie_balance_kcal should be 1200
 
-        mock_uow.daily_stats.get.return_value = sample_daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
@@ -102,7 +110,7 @@ class TestCheckProgress:
         sample_daily_stats.calories_burned_kcal = 1800
         # calorie_balance_kcal should be -600 (1200 - 1800)
 
-        mock_uow.daily_stats.get.return_value = sample_daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
@@ -123,7 +131,7 @@ class TestCheckProgress:
         sample_daily_stats.calories_consumed_kcal = 0
         sample_daily_stats.calories_burned_kcal = 0
 
-        mock_uow.daily_stats.get.return_value = sample_daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
@@ -148,7 +156,7 @@ class TestCheckProgress:
         sample_daily_stats.calories_burned_kcal = 800
         # calorie_balance_kcal should be 2700
 
-        mock_uow.daily_stats.get.return_value = sample_daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
@@ -177,7 +185,7 @@ class TestCheckProgress:
             calories_burned_kcal=500,
         )
 
-        mock_uow.daily_stats.get.return_value = daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)
@@ -208,7 +216,7 @@ class TestCheckProgress:
             calories_burned_kcal=600,
         )
 
-        mock_uow.daily_stats.get.return_value = daily_stats
+        mock_uow.daily_stats.get_or_create.return_value = daily_stats
 
         # Act
         result = await check_progress(user_id, mock_uow)

@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from domain.entities.workout_log import WorkoutLog
 from domain.interfaces.unit_of_work import UnitOfWork
+from application.use_cases.maintenance.ensure_daily_stats import ensure_daily_stats
 
 
 async def finalize_workout_log(
@@ -28,7 +29,8 @@ async def finalize_workout_log(
 
     # Обновить DailyStats
     today = date.today()
-    daily_stats = await uow.daily_stats.get_or_create(user_id, today)
+    await ensure_daily_stats(user_id, uow)
+    daily_stats = await uow.daily_stats.get(user_id, today)
     daily_stats.calories_burned_kcal += int(kcal_burned)
     daily_stats.water_goal_ml += water_bonus_ml
     daily_stats.updated_at = datetime.utcnow()

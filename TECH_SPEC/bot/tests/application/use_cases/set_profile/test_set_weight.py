@@ -39,3 +39,19 @@ class TestSetWeight:
 
         mock_uow.users.get.assert_called_once_with(user_id)
         mock_uow.users.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_weight_does_not_create_daily_stats(self, mock_uow, sample_user):
+        """set_weight не создаёт daily_stats."""
+        # Arrange
+        user_id = 12345
+        new_weight = 75.5
+        mock_uow.users.get.return_value = sample_user
+        # Mock daily_stats.get_or_create to track calls
+        mock_uow.daily_stats.get_or_create = AsyncMock()
+
+        # Act
+        await set_weight(user_id, new_weight, mock_uow)
+
+        # Assert
+        mock_uow.daily_stats.get_or_create.assert_not_called()

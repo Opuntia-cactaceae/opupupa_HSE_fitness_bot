@@ -130,7 +130,7 @@ class FoodClient:
         # Create signature base string
         encoded_url = self._percent_encode(url)
         encoded_method = self._percent_encode(method.upper())
-        encoded_param_string = urllib.parse.quote(param_string, safe='%')
+        encoded_param_string = self._percent_encode(param_string)
         base_string = f"{encoded_method}&{encoded_url}&{encoded_param_string}"
 
         # Create signing key (consumer_secret & token_secret, token_secret is empty)
@@ -173,9 +173,8 @@ class FoodClient:
                     method, self.BASE_URL, params
                 )
             }
-            encoded_query = self._build_encoded_query(params)
             async with session.request(
-                method, self.BASE_URL, params=encoded_query, headers=headers
+                method, self.BASE_URL, params=params, headers=headers
             ) as resp:
                 if resp.status != 200:
                     logger.warning(

@@ -1,21 +1,23 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
 
-from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard
+from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard, progress_keyboard
 from infrastructure.config.database import AsyncSessionFactory
 from infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from application.use_cases.progress.check_progress import check_progress
 from application.use_cases.progress.get_weekly_stats import get_weekly_stats
+from presentation.services.menu_manager import replace_menu_message
 
 router = Router()
 
 
 @router.callback_query(F.data.startswith("progress_show"))
-async def callback_progress_show(callback: CallbackQuery):
+async def callback_progress_show(callback: CallbackQuery, state: FSMContext):
     """Показать прогресс по всем параметрам."""
     # Parse parent context from callback data (format: "progress_show" or "progress_show:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         progress = await check_progress(callback.from_user.id, uow)
@@ -52,21 +54,23 @@ async def callback_progress_show(callback: CallbackQuery):
 
         # Determine which keyboard to show based on parent context
         if parent_context == "main_menu":
-            keyboard = main_menu_keyboard()
+            keyboard = progress_keyboard(parent_context)
         elif parent_context == "profile_setup":
             keyboard = profile_setup_keyboard(parent_context="main_menu")
         else:
             keyboard = main_menu_keyboard()  # Fallback
 
-        await callback.message.edit_text(
-            message,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
+        await replace_menu_message(
+            message_or_callback=callback,
+            text=message,
+            keyboard=keyboard,
+            state=state,
+            return_menu=parent_context,
         )
 
 
 @router.callback_query(F.data.startswith("progress_weekly_show"))
-async def callback_progress_weekly_show(callback: CallbackQuery):
+async def callback_progress_weekly_show(callback: CallbackQuery, state: FSMContext):
     """Показать недельную статистику."""
     from datetime import date, timedelta
 
@@ -118,8 +122,10 @@ async def callback_progress_weekly_show(callback: CallbackQuery):
                 )
 
         keyboard = weekly_stats_keyboard(reference_date)
-        await callback.message.edit_text(
-            message,
-            reply_markup=keyboard,
-            parse_mode="Markdown",
+        await replace_menu_message(
+            message_or_callback=callback,
+            text=message,
+            keyboard=keyboard,
+            state=state,
+            return_menu="main_menu",
         )

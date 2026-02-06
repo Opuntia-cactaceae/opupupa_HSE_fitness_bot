@@ -2,6 +2,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from datetime import date
 
 
+def _normalize_parent_context(parent_context: str) -> str:
+    """Return 'main_menu' if parent_context is empty string, otherwise return parent_context."""
+    return parent_context if parent_context != "" else "main_menu"
+
+
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     """Главное меню бота."""
     buttons = [
@@ -25,6 +30,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
 def profile_setup_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура настройки профиля."""
+    parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
             InlineKeyboardButton(text="Вес", callback_data=f"profile_set_weight:profile_setup"),
@@ -50,6 +56,7 @@ def profile_setup_keyboard(parent_context: str = "main_menu") -> InlineKeyboardM
 
 def water_volume_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура выбора объёма воды."""
+    parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
             InlineKeyboardButton(text="250 мл", callback_data=f"water_250:{parent_context}"),
@@ -58,6 +65,9 @@ def water_volume_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMa
         [
             InlineKeyboardButton(text="750 мл", callback_data=f"water_750:{parent_context}"),
             InlineKeyboardButton(text="1000 мл", callback_data=f"water_1000:{parent_context}"),
+        ],
+        [
+            InlineKeyboardButton(text="Другое количество", callback_data=f"water_custom:{parent_context}"),
         ],
         [
             InlineKeyboardButton(text="◀️ Назад", callback_data=parent_context),
@@ -86,6 +96,7 @@ def food_type_keyboard() -> InlineKeyboardMarkup:
 
 def workout_type_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура выбора типа тренировки."""
+    parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
             InlineKeyboardButton(text="🏃 Бег", callback_data=f"workout_running:{parent_context}"),
@@ -104,6 +115,7 @@ def workout_type_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMa
 
 def calorie_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура выбора режима цели калорий."""
+    parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
             InlineKeyboardButton(text="Авто расчет", callback_data=f"calorie_goal_auto:{parent_context}"),
@@ -118,6 +130,7 @@ def calorie_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeybo
 
 def water_goal_mode_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
     """Клавиатура выбора режима цели по воде."""
+    parent_context = _normalize_parent_context(parent_context)
     buttons = [
         [
             InlineKeyboardButton(text="Авто расчет", callback_data=f"water_goal_auto:{parent_context}"),
@@ -143,8 +156,31 @@ def weekly_stats_keyboard(reference_date: date) -> InlineKeyboardMarkup:
                                  callback_data=f"progress_weekly_show:{next_week.isoformat()}"),
         ],
         [
+            InlineKeyboardButton(text="📍 Текущая неделя",
+                                 callback_data=f"progress_weekly_show:{date.today().isoformat()}"),
+        ],
+        [
             InlineKeyboardButton(text="🔙 В главное меню",
                                  callback_data="main_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def progress_keyboard(parent_context: str = "main_menu") -> InlineKeyboardMarkup:
+    """Клавиатура экрана прогресса на сегодня."""
+    from datetime import date
+    parent_context = _normalize_parent_context(parent_context)
+    buttons = [
+        [
+            InlineKeyboardButton(text="📅 Недельная статистика",
+                                 callback_data=f"progress_weekly_show:{date.today().isoformat()}"),
+            InlineKeyboardButton(text="🔄 Обновить",
+                                 callback_data=f"progress_show:{parent_context}"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад",
+                                 callback_data=parent_context if parent_context != "profile_setup" else "profile_setup:main_menu"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

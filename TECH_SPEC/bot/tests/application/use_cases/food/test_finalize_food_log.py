@@ -1,6 +1,6 @@
 import pytest
 from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from domain.entities.food_log import FoodLog
 from application.use_cases.food.finalize_food_log import finalize_food_log
@@ -10,7 +10,8 @@ class TestFinalizeFoodLog:
     """Тестирование finalize_food_log use case."""
 
     @pytest.mark.asyncio
-    async def test_finalize_food_log_creates_log_and_updates_stats(self, mock_uow, sample_daily_stats):
+    @patch('application.use_cases.set_profile.finalize_profile.WeatherClient')
+    async def test_finalize_food_log_creates_log_and_updates_stats(self, MockWeatherClient, mock_uow, sample_daily_stats, sample_user):
         """finalize_food_log создает запись и обновляет статистику."""
         # Arrange
         user_id = 12345
@@ -22,8 +23,15 @@ class TestFinalizeFoodLog:
         kcal_total = 104.0  # (52/100)*200
 
         today = date.today()
+        mock_uow.users.get.return_value = sample_user
         mock_uow.daily_stats.get_or_create.return_value = sample_daily_stats
+        mock_uow.daily_stats.get.return_value = sample_daily_stats
         initial_calories_consumed = sample_daily_stats.calories_consumed_kcal
+
+        # Mock weather client
+        mock_weather_client = AsyncMock()
+        mock_weather_client.get_temperature.return_value = None
+        MockWeatherClient.return_value = mock_weather_client
 
         # Act
         await finalize_food_log(
@@ -50,7 +58,7 @@ class TestFinalizeFoodLog:
         mock_uow.daily_stats.get_or_create.assert_called_once_with(user_id, today)
         assert sample_daily_stats.calories_consumed_kcal == initial_calories_consumed + int(kcal_total)
         assert sample_daily_stats.updated_at > datetime(2024, 1, 1, 12, 0, 0)
-        mock_uow.daily_stats.update.assert_called_once_with(sample_daily_stats)
+        assert mock_uow.daily_stats.update.call_count == 2
 
     @pytest.mark.asyncio
     async def test_finalize_food_log_with_negative_kcal_total(self, mock_uow, sample_daily_stats):

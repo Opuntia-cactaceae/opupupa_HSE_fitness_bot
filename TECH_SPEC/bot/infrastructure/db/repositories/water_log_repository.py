@@ -18,13 +18,15 @@ def to_domain(model: WaterLogModel) -> WaterLog:
 
 
 def to_model(water_log: WaterLog) -> WaterLogModel:
-    return WaterLogModel(
-        id=water_log.id,
-        user_id=water_log.user_id,
-        date=water_log.date,
-        logged_at=water_log.logged_at,
-        ml=water_log.ml,
-    )
+    kwargs = {
+        "user_id": water_log.user_id,
+        "date": water_log.date,
+        "logged_at": water_log.logged_at,
+        "ml": water_log.ml,
+    }
+    if water_log.id != 0:
+        kwargs["id"] = water_log.id
+    return WaterLogModel(**kwargs)
 
 
 class WaterLogRepositoryImpl(WaterLogRepository):

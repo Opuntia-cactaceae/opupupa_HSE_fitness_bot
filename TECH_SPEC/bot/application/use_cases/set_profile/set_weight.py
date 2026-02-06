@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from domain.interfaces.unit_of_work import UnitOfWork
-from .finalize_profile import finalize_profile
 
 
 async def set_weight(user_id: int, weight_kg: float, uow: UnitOfWork) -> None:
@@ -12,6 +11,3 @@ async def set_weight(user_id: int, weight_kg: float, uow: UnitOfWork) -> None:
     user.weight_kg = weight_kg
     user.updated_at = datetime.utcnow()
     await uow.users.update(user)
-
-    # Пересчитать цели в DailyStats
-    await finalize_profile(user_id, uow)

@@ -21,16 +21,18 @@ def to_domain(model: WorkoutLogModel) -> WorkoutLog:
 
 
 def to_model(workout_log: WorkoutLog) -> WorkoutLogModel:
-    return WorkoutLogModel(
-        id=workout_log.id,
-        user_id=workout_log.user_id,
-        date=workout_log.date,
-        logged_at=workout_log.logged_at,
-        workout_type=workout_log.workout_type,
-        minutes=workout_log.minutes,
-        kcal_burned=workout_log.kcal_burned,
-        water_bonus_ml=workout_log.water_bonus_ml,
-    )
+    kwargs = {
+        "user_id": workout_log.user_id,
+        "date": workout_log.date,
+        "logged_at": workout_log.logged_at,
+        "workout_type": workout_log.workout_type,
+        "minutes": workout_log.minutes,
+        "kcal_burned": workout_log.kcal_burned,
+        "water_bonus_ml": workout_log.water_bonus_ml,
+    }
+    if workout_log.id != 0:
+        kwargs["id"] = workout_log.id
+    return WorkoutLogModel(**kwargs)
 
 
 class WorkoutLogRepositoryImpl(WorkoutLogRepository):

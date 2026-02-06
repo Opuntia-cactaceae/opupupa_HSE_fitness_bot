@@ -12,6 +12,8 @@ from presentation.keyboards.inline import (
     calorie_goal_mode_keyboard,
     water_goal_mode_keyboard,
 )
+from presentation.services.menu_manager import show_menu, replace_menu_message, send_menu_new
+from presentation.services.keyboard_mapper import get_keyboard_for_parent_context, get_callback_data_for_parent_context
 from presentation.validators.profile import (
     validate_weight,
     validate_height,
@@ -99,19 +101,23 @@ async def cmd_set_profile(message: Message):
 
 
 @router.callback_query(F.data.startswith("profile_setup"))
-async def callback_profile_setup(callback: CallbackQuery):
+async def callback_profile_setup(callback: CallbackQuery, state: FSMContext):
     """Переход к настройке профиля."""
     # Parse parent context from callback data (format: "profile_setup" or "profile_setup:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
+    # Store parent context for profile setup menu (needed for nested navigation)
+    await state.update_data(profile_setup_parent=parent_context)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await start_set_profile(callback.from_user.id, uow)
         profile_text = await get_formatted_profile_text(callback.from_user.id, uow)
-        await callback.message.edit_text(
-            profile_text,
-            reply_markup=profile_setup_keyboard(parent_context=parent_context),
-            parse_mode="Markdown",
+        await replace_menu_message(
+            message_or_callback=callback,
+            text=profile_text,
+            keyboard=profile_setup_keyboard(parent_context=parent_context),
+            state=state,
+            return_menu=parent_context,
         )
 
 
@@ -120,20 +126,28 @@ async def callback_set_weight(callback: CallbackQuery, state: FSMContext):
     """Запрос ввода веса."""
     # Parse parent context from callback data (format: "profile_set_weight" or "profile_set_weight:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_weight)
 
-    # Create cancel button
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Отмена", callback_data=parent_context)]
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
     ])
 
-    await callback.message.edit_text(
-        "Введите ваш вес в кг (например: 70.5):",
-        reply_markup=cancel_keyboard,
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите ваш вес в кг (например: 70.5):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -144,31 +158,62 @@ async def process_weight_input(message: Message, state: FSMContext):
     try:
         weight = validate_weight(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш вес в кг (например: 70.5):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_weight(message.from_user.id, weight, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Вес сохранён: {weight} кг",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Вес сохранён: {weight} кг",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш вес в кг (например: 70.5):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 
@@ -178,20 +223,28 @@ async def callback_set_height(callback: CallbackQuery, state: FSMContext):
     """Запрос ввода роста."""
     # Parse parent context from callback data (format: "profile_set_height" or "profile_set_height:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_height)
 
-    # Create cancel button
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Отмена", callback_data=parent_context)]
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
     ])
 
-    await callback.message.edit_text(
-        "Введите ваш рост в см (например: 175):",
-        reply_markup=cancel_keyboard,
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите ваш рост в см (например: 175):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -202,31 +255,62 @@ async def process_height_input(message: Message, state: FSMContext):
     try:
         height = validate_height(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш рост в см (например: 175):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_height(message.from_user.id, height, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Рост сохранён: {height} см",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Рост сохранён: {height} см",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш рост в см (например: 175):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 @router.callback_query(F.data.startswith("profile_set_age"))
@@ -234,13 +318,28 @@ async def callback_set_age(callback: CallbackQuery, state: FSMContext):
     """Запрос ввода возраста."""
     # Parse parent context from callback data (format: "profile_set_age" or "profile_set_age:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_age)
-    await callback.message.edit_text(
-        "Введите ваш возраст в годах (например: 30):",
+
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+    ])
+
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите ваш возраст в годах (например: 30):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -251,31 +350,62 @@ async def process_age_input(message: Message, state: FSMContext):
     try:
         age = validate_age(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш возраст в годах (например: 30):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_age(message.from_user.id, age, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Возраст сохранён: {age} лет",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Возраст сохранён: {age} лет",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ваш возраст в годах (например: 30):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 @router.callback_query(F.data.startswith("profile_set_activity"))
@@ -283,13 +413,28 @@ async def callback_set_activity_minutes(callback: CallbackQuery, state: FSMConte
     """Запрос ввода минут активности."""
     # Parse parent context from callback data (format: "profile_set_activity" or "profile_set_activity:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_activity_minutes)
-    await callback.message.edit_text(
-        "Введите ежедневную активность в минутах (например: 60):",
+
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+    ])
+
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите ежедневную активность в минутах (например: 60):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -300,31 +445,62 @@ async def process_activity_minutes_input(message: Message, state: FSMContext):
     try:
         minutes = validate_activity_minutes(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ежедневную активность в минутах (например: 60):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_activity_minutes(message.from_user.id, minutes, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Активность сохранена: {minutes} мин/день",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Активность сохранена: {minutes} мин/день",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите ежедневную активность в минутах (например: 60):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 @router.callback_query(F.data.startswith("profile_set_city"))
@@ -332,20 +508,28 @@ async def callback_set_city(callback: CallbackQuery, state: FSMContext):
     """Запрос ввода города."""
     # Parse parent context from callback data (format: "profile_set_city" or "profile_set_city:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_city)
 
-    # Create cancel button
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
     cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️ Отмена", callback_data=parent_context)]
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
     ])
 
-    await callback.message.edit_text(
-        "Введите ваш город (например: Москва):",
-        reply_markup=cancel_keyboard,
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите ваш город (например: Москва):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -361,51 +545,56 @@ async def process_city_input(message: Message, state: FSMContext):
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_city(message.from_user.id, city, uow)
-        # Get parent context from state before clearing
+        # Get parent context and profile_setup_parent from state before clearing
         data = await state.get_data()
-        parent_context = data.get("parent_context", "main_menu")
-        await state.clear()
-
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
         # Determine which keyboard to show based on parent context
-        if parent_context == "profile_setup":
-            keyboard = profile_setup_keyboard(parent_context="main_menu")
-        elif parent_context == "main_menu":
-            keyboard = main_menu_keyboard()
-        else:
-            keyboard = main_menu_keyboard()  # Fallback
+        keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-        await message.answer(
-            f"✅ Город сохранён: {city}",
-            reply_markup=keyboard,
+        await send_menu_new(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"✅ Город сохранён: {city}",
+            keyboard=keyboard,
+            state=state,
+            return_menu=parent_context,
         )
+        await state.clear()
 
 
 @router.callback_query(F.data.startswith("profile_set_calorie_goal"))
-async def callback_set_calorie_goal(callback: CallbackQuery):
+async def callback_set_calorie_goal(callback: CallbackQuery, state: FSMContext):
     """Переход к выбору режима цели калорий."""
     # Parse parent context from callback data (format: "profile_set_calorie_goal" or "profile_set_calorie_goal:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    await callback.message.edit_text(
-        "Выберите режим цели по калориям:",
-        reply_markup=calorie_goal_mode_keyboard(parent_context=parent_context),
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Выберите режим цели по калориям:",
+        keyboard=calorie_goal_mode_keyboard(parent_context=parent_context),
+        state=state,
+        return_menu=parent_context,
     )
 
 
 @router.callback_query(F.data.startswith("calorie_goal_auto"))
-async def callback_calorie_goal_auto(callback: CallbackQuery):
+async def callback_calorie_goal_auto(callback: CallbackQuery, state: FSMContext):
     """Установить автоматический режим цели калорий."""
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_calorie_goal_mode(callback.from_user.id, "auto", uow)
 
         keyboard = profile_setup_keyboard(parent_context=parent_context)
-        await callback.message.edit_text(
-            "✅ Режим цели калорий установлен: авто расчет.",
-            reply_markup=keyboard,
+        await replace_menu_message(
+            message_or_callback=callback,
+            text="✅ Режим цели калорий установлен: авто расчет.",
+            keyboard=keyboard,
+            state=state,
+            return_menu=parent_context,
         )
 
 
@@ -413,45 +602,65 @@ async def callback_calorie_goal_auto(callback: CallbackQuery):
 async def callback_calorie_goal_manual(callback: CallbackQuery, state: FSMContext):
     """Установить ручной режим цели калорий и запросить ввод."""
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_calorie_goal_manual)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_calorie_goal_mode(callback.from_user.id, "manual", uow)
 
-    await callback.message.edit_text(
-        "Введите цель по калориям в ккал (например: 2000):",
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+    ])
+
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите цель по калориям в ккал (например: 2000):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
 @router.callback_query(F.data.startswith("profile_set_water_goal"))
-async def callback_set_water_goal(callback: CallbackQuery):
+async def callback_set_water_goal(callback: CallbackQuery, state: FSMContext):
     """Переход к выбору режима цели по воде."""
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    await callback.message.edit_text(
-        "Выберите режим цели по воде:",
-        reply_markup=water_goal_mode_keyboard(parent_context=parent_context),
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Выберите режим цели по воде:",
+        keyboard=water_goal_mode_keyboard(parent_context=parent_context),
+        state=state,
+        return_menu=parent_context,
     )
 
 
 @router.callback_query(F.data.startswith("water_goal_auto"))
-async def callback_water_goal_auto(callback: CallbackQuery):
+async def callback_water_goal_auto(callback: CallbackQuery, state: FSMContext):
     """Установить автоматический режим цели по воде."""
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_water_goal_mode(callback.from_user.id, "auto", uow)
 
         keyboard = profile_setup_keyboard(parent_context=parent_context)
-        await callback.message.edit_text(
-            "✅ Режим цели по воде установлен: авто расчет.",
-            reply_markup=keyboard,
+        await replace_menu_message(
+            message_or_callback=callback,
+            text="✅ Режим цели по воде установлен: авто расчет.",
+            keyboard=keyboard,
+            state=state,
+            return_menu=parent_context,
         )
 
 
@@ -459,17 +668,31 @@ async def callback_water_goal_auto(callback: CallbackQuery):
 async def callback_water_goal_manual(callback: CallbackQuery, state: FSMContext):
     """Установить ручной режим цели по воде и запросить ввод."""
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
-    # Store parent context in FSM state
-    await state.update_data(parent_context=parent_context)
+    # Retrieve profile_setup_parent from state (if available)
+    data = await state.get_data()
+    profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+
+    # Store parent context and profile_setup_parent in FSM state
+    await state.update_data(parent_context=parent_context, profile_setup_parent=profile_setup_parent)
     await state.set_state(SetProfileStates.set_water_goal_manual)
 
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         await set_water_goal_mode(callback.from_user.id, "manual", uow)
 
-    await callback.message.edit_text(
-        "Введите цель по воде в мл (например: 2000):",
+    # Create cancel button with appropriate callback data
+    cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+    cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+    ])
+
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Введите цель по воде в мл (например: 2000):",
+        keyboard=cancel_keyboard,
+        state=state,
+        return_menu=parent_context,
     )
 
 
@@ -480,31 +703,62 @@ async def process_calorie_goal_manual_input(message: Message, state: FSMContext)
     try:
         calories = validate_calorie_goal(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите цель по калориям в ккал (например: 2000):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_calorie_goal_manual(message.from_user.id, calories, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Цель по калориям сохранена: {calories} ккал",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Цель по калориям сохранена: {calories} ккал",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите цель по калориям в ккал (например: 2000):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 @router.message(StateFilter(SetProfileStates.set_water_goal_manual), F.text)
@@ -514,37 +768,71 @@ async def process_water_goal_manual_input(message: Message, state: FSMContext):
     try:
         water_ml = validate_water_goal(message.text)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите цель по воде в мл (например: 2000):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
         return
 
     try:
         async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
             await set_water_goal_manual(message.from_user.id, water_ml, uow)
-            # Get parent context from state before clearing
+            # Get parent context and profile_setup_parent from state before clearing
             data = await state.get_data()
-            parent_context = data.get("parent_context", "main_menu")
-            await state.clear()
-
+            parent_context = data.get("parent_context") or "main_menu"
+            profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
             # Determine which keyboard to show based on parent context
-            if parent_context == "profile_setup":
-                keyboard = profile_setup_keyboard(parent_context="main_menu")
-            elif parent_context == "main_menu":
-                keyboard = main_menu_keyboard()
-            else:
-                keyboard = main_menu_keyboard()  # Fallback
+            keyboard = get_keyboard_for_parent_context(parent_context, profile_setup_parent)
 
-            await message.answer(
-                f"✅ Цель по воде сохранена: {water_ml} мл",
-                reply_markup=keyboard,
+            await send_menu_new(
+                bot=message.bot,
+                chat_id=message.chat.id,
+                text=f"✅ Цель по воде сохранена: {water_ml} мл",
+                keyboard=keyboard,
+                state=state,
+                return_menu=parent_context,
             )
+            await state.set_state(None)
+            # Remove temporary keys but keep menu_manager keys
+            await state.update_data(parent_context=None, profile_setup_parent=None)
     except ValidationError as e:
-        await message.answer(f"❌ {e.message}")
+        # Edit the existing menu message to show error
+        data = await state.get_data()
+        parent_context = data.get("parent_context") or "main_menu"
+        profile_setup_parent = data.get("profile_setup_parent") or "main_menu"
+        cancel_callback_data = get_callback_data_for_parent_context(parent_context, profile_setup_parent)
+        cancel_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data=cancel_callback_data)]
+        ])
+        await show_menu(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            text=f"❌ {e.message}\n\nВведите цель по воде в мл (например: 2000):",
+            keyboard=cancel_keyboard,
+            state=state,
+            return_menu=parent_context,
+        )
 
 
 @router.callback_query(F.data == "main_menu")
-async def callback_main_menu(callback: CallbackQuery):
+async def callback_main_menu(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню."""
-    await callback.message.edit_text(
-        "Главное меню:",
-        reply_markup=main_menu_keyboard(),
+    await replace_menu_message(
+        message_or_callback=callback,
+        text="Главное меню:",
+        keyboard=main_menu_keyboard(),
+        state=state,
+        return_menu="main_menu",
     )

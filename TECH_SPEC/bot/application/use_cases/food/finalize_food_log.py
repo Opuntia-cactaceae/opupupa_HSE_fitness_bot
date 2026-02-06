@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from domain.entities.food_log import FoodLog
 from domain.interfaces.unit_of_work import UnitOfWork
+from application.use_cases.maintenance.ensure_daily_stats import ensure_daily_stats
 
 
 async def finalize_food_log(
@@ -33,7 +34,8 @@ async def finalize_food_log(
 
     # Обновить DailyStats
     today = date.today()
-    daily_stats = await uow.daily_stats.get_or_create(user_id, today)
+    await ensure_daily_stats(user_id, uow)
+    daily_stats = await uow.daily_stats.get(user_id, today)
     daily_stats.calories_consumed_kcal += int(kcal_total)
     daily_stats.updated_at = datetime.utcnow()
     await uow.daily_stats.update(daily_stats)

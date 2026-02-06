@@ -10,11 +10,11 @@ from domain.exceptions import ValidationError
 
 class NumericInput(BaseModel):
     """Базовая модель для валидации числового ввода из строки."""
-    text: str
-    field_name: str
     min_val: float
     max_val: float
     allow_zero: bool = True
+    field_name: str
+    text: str
 
     @field_validator('text')
     @classmethod
@@ -24,6 +24,12 @@ class NumericInput(BaseModel):
         min_val = info.data.get('min_val')
         max_val = info.data.get('max_val')
         allow_zero = info.data.get('allow_zero', True)
+
+        # Защита от некорректной конфигурации валидатора
+        if min_val is None:
+            raise RuntimeError(f"min_val не может быть None для поля '{field_name}'")
+        if max_val is None:
+            raise RuntimeError(f"max_val не может быть None для поля '{field_name}'")
 
         # Преобразуем текст в число
         try:
@@ -52,6 +58,10 @@ def create_numeric_validator(
     field: str = None
 ):
     """Создаёт функцию-валидатор для числового ввода."""
+    if min_val is None or max_val is None:
+        raise RuntimeError(f"min_val и max_val не могут быть None для валидатора '{field_name}'")
+    if min_val > max_val:
+        raise RuntimeError(f"min_val ({min_val}) не может быть больше max_val ({max_val}) для валидатора '{field_name}'")
     def validator(text: str) -> float:
         try:
             model = NumericInput(

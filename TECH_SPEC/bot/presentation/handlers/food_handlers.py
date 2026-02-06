@@ -21,7 +21,7 @@ async def callback_food_add(callback: CallbackQuery, state: FSMContext):
     """Начало логирования еды."""
     # Parse parent context from callback data (format: "food_add" or "food_add:parent")
     parts = callback.data.split(":")
-    parent_context = parts[1] if len(parts) > 1 else "main_menu"
+    parent_context = parts[1] if len(parts) > 1 and parts[1] != "" else "main_menu"
 
     # Store parent context in FSM state
     await state.update_data(parent_context=parent_context)
@@ -63,7 +63,9 @@ async def process_food_input(message: Message, state: FSMContext):
             "❌ Продукт не найден. Попробуйте другой.",
             reply_markup=keyboard,
         )
-        await state.clear()
+        await state.set_state(None)
+        # Remove temporary keys but keep menu_manager keys
+        await state.update_data(parent_context=None)
         return
 
     product_name, kcal_per_100g, attribution = result
@@ -125,7 +127,9 @@ async def process_grams_input(message: Message, state: FSMContext):
         return
 
     # Завершаем FSM и показываем результат
-    await state.clear()
+    await state.set_state(None)
+    # Remove temporary keys but keep menu_manager keys
+    await state.update_data(parent_context=None)
 
     # Determine which keyboard to show based on parent context
     if parent_context == "main_menu":

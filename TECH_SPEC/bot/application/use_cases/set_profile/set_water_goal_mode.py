@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from domain.interfaces.unit_of_work import UnitOfWork
-from .finalize_profile import finalize_profile
 
 
 async def set_water_goal_mode(user_id: int, mode: str, uow: UnitOfWork) -> None:
@@ -15,6 +14,3 @@ async def set_water_goal_mode(user_id: int, mode: str, uow: UnitOfWork) -> None:
     user.water_goal_mode = mode
     user.updated_at = datetime.utcnow()
     await uow.users.update(user)
-
-    # Пересчитать цели в DailyStats
-    await finalize_profile(user_id, uow)

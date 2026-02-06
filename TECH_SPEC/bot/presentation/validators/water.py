@@ -1,4 +1,13 @@
 """Валидаторы для сценариев трекинга воды."""
 
-# Валидация воды не требуется, так как значения выбираются из предопределённых кнопок.
-# Этот файл оставлен для будущих валидаторов.
+from .base import create_numeric_validator
+from domain.exceptions import ValidationError
+
+
+validate_water_ml = create_numeric_validator(
+    field_name="Объём воды",
+    min_val=50,
+    max_val=3000,
+    allow_zero=False,
+    field='water_ml'
+)

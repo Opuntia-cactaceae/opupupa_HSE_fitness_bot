@@ -24,19 +24,21 @@ def to_domain(model: FoodLogModel) -> FoodLog:
 
 
 def to_model(food_log: FoodLog) -> FoodLogModel:
-    return FoodLogModel(
-        id=food_log.id,
-        user_id=food_log.user_id,
-        date=food_log.date,
-        logged_at=food_log.logged_at,
-        product_query=food_log.product_query,
-        product_name=food_log.product_name,
-        source=food_log.source,
-        product_external_id=food_log.product_external_id,
-        kcal_per_100g=food_log.kcal_per_100g,
-        grams=food_log.grams,
-        kcal_total=food_log.kcal_total,
-    )
+    kwargs = {
+        "user_id": food_log.user_id,
+        "date": food_log.date,
+        "logged_at": food_log.logged_at,
+        "product_query": food_log.product_query,
+        "product_name": food_log.product_name,
+        "source": food_log.source,
+        "product_external_id": food_log.product_external_id,
+        "kcal_per_100g": food_log.kcal_per_100g,
+        "grams": food_log.grams,
+        "kcal_total": food_log.kcal_total,
+    }
+    if food_log.id != 0:
+        kwargs["id"] = food_log.id
+    return FoodLogModel(**kwargs)
 
 
 class FoodLogRepositoryImpl(FoodLogRepository):
