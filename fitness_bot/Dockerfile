@@ -7,7 +7,6 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    python3-dev \
     libpq-dev \
   && rm -rf /var/lib/apt/lists/*
 
@@ -18,8 +17,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
 RUN pip install --upgrade pip wheel \
- && pip wheel --wheel-dir /wheels -r requirements.txt \
- && pip install --no-index --find-links=/wheels -r requirements.txt
+ && pip wheel --wheel-dir /wheels -r requirements.txt
 
 FROM python:3.11-slim
 
@@ -33,13 +31,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv /opt/venv
-COPY . .
+RUN useradd -m -u 1000 appuser
 
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh \
- && useradd -m -u 1000 appuser \
- && chown -R appuser:appuser /app
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /wheels /wheels
+COPY requirements.txt .
+
+RUN pip install --no-index --find-links=/wheels -r requirements.txt \
+ && rm -rf /wheels
+
+COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser entrypoint.sh /app/entrypoint.sh
+
+RUN chmod +x /app/entrypoint.sh
 
 USER appuser
+
 ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
@@ -12,7 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-health_bot}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,14 +27,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-health_bot}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      WEATHER_API_KEY: ${WEATHER_API_KEY}
-      FOOD_API_KEY: ${FOOD_API_KEY}
-      FATSECRET_CONSUMER_KEY: ${FATSECRET_CONSUMER_KEY}
-      FATSECRET_CONSUMER_SECRET: ${FATSECRET_CONSUMER_SECRET}
-      AI_API_KEY: ${AI_API_KEY}
     restart: unless-stopped
     networks:
       - health_bot_network
