@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 
 from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard, progress_keyboard, charts_keyboard
@@ -8,7 +8,7 @@ from infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
 from application.use_cases.progress.check_progress import check_progress
 from application.use_cases.progress.get_weekly_stats import get_weekly_stats
 from application.use_cases.progress.get_progress_chart_data import get_progress_chart_data
-from infrastructure.charts.progress_charts import build_progress_charts_png
+from presentation.services.charts import build_progress_chart
 from presentation.services.menu_manager import replace_menu_message
 
 router = Router()
@@ -164,19 +164,23 @@ async def callback_charts_period(callback: CallbackQuery, state: FSMContext):
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         daily_stats = await get_progress_chart_data(callback.from_user.id, period_days, uow)
 
-        png_bytes = build_progress_charts_png(daily_stats)
+        png_bytes = build_progress_chart(daily_stats)
 
-                                                    
-        await callback.message.answer_photo(
-            photo=png_bytes,
-            caption=f"Графики прогресса за {period_days} дней",
-        )
+        if png_bytes is None:
+            await callback.message.answer("📊 Нет данных за выбранный период.")
+            message_text = "Нет данных за выбранный период. Выберите другой период:"
+        else:
+            input_file = BufferedInputFile(png_bytes, filename="progress_chart.png")
+            await callback.message.answer_photo(
+                photo=input_file,
+                caption=f"Графики прогресса за {period_days} дней",
+            )
+            message_text = f"Графики за {period_days} дней отправлены. Выберите другой период:"
 
-                                                              
         keyboard = charts_keyboard(parent_context)
         await replace_menu_message(
             message_or_callback=callback,
-            text=f"Графики за {period_days} дней отправлены. Выберите другой период:",
+            text=message_text,
             keyboard=keyboard,
             state=state,
             return_menu=parent_context,

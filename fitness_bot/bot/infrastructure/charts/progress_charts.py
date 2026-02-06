@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from domain.entities.daily_stats import DailyStats
 
 
-def build_progress_charts_png(daily_stats: List[DailyStats]) -> bytes:
+def build_progress_charts_png(daily_stats: List[DailyStats]) -> Optional[bytes]:
     """
     Строит PNG-изображение с графиками прогресса по воде и калориям
     на основе списка суточной статистики.
@@ -19,7 +19,7 @@ def build_progress_charts_png(daily_stats: List[DailyStats]) -> bytes:
         содержащих значения потребления воды и калорий по датам.
 
     Логика работы:
-        - При отсутствии данных возвращает изображение-заглушку.
+        - При отсутствии данных возвращает None.
         - Извлекает временной ряд дат и ключевых показателей из списка статистики.
         - Строит два графика:
             - прогресс по воде (выпито и цель),
@@ -28,12 +28,12 @@ def build_progress_charts_png(daily_stats: List[DailyStats]) -> bytes:
         - Сохраняет результат в буфер памяти в формате PNG и возвращает байты.
 
     Возвращаемое значение:
-        bytes:
+        Optional[bytes]:
             Байтовое содержимое PNG-файла с графиками прогресса
-            либо изображение-заглушка при отсутствии данных.
+            или None при отсутствии данных.
     """
     if not daily_stats:
-        return _create_no_data_image()
+        return None
 
     dates = [s.date for s in daily_stats]
     water_logged = [s.water_logged_ml for s in daily_stats]
@@ -74,32 +74,3 @@ def build_progress_charts_png(daily_stats: List[DailyStats]) -> bytes:
     return buf.read()
 
 
-def _create_no_data_image() -> bytes:
-    """
-    Создаёт PNG-изображение-заглушку с сообщением об отсутствии данных.
-
-    Входные параметры:
-        Нет.
-
-    Логика работы:
-        - Создаёт фигуру с текстовым сообщением.
-        - Отключает отображение осей.
-        - Сохраняет изображение в буфер памяти в формате PNG и возвращает байты.
-
-    Возвращаемое значение:
-        bytes:
-            Байтовое содержимое PNG-файла с сообщением об отсутствии данных.
-    """
-    fig = Figure(figsize=(6, 2))
-    ax = fig.add_subplot(111)
-    ax.text(0.5, 0.5, 'Нет данных за выбранный период',
-            horizontalalignment='center',
-            verticalalignment='center',
-            transform=ax.transAxes,
-            fontsize=14)
-    ax.axis('off')
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight')
-    buf.seek(0)
-    return buf.read()
