@@ -1,20 +1,8 @@
-import asyncio
-import base64
-import hashlib
-import hmac
-import logging
-import secrets
-import time
-import urllib.parse
+import base64, hashlib, hmac, secrets, time, urllib.parse, logging, aiohttp
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
-
-import aiohttp
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
-
-# Attribution constant
-FATSECRET_ATTRIBUTION = "Powered by FatSecret"
 
 
 @dataclass
@@ -24,294 +12,170 @@ class FoodSearchItem:
     brand: Optional[str] = None
 
 
-@dataclass
-class FoodNutrition:
-    kcal_per_100g: float
-    protein_g: Optional[float] = None
-    fat_g: Optional[float] = None
-    carbs_g: Optional[float] = None
-
-
-class FoodClient:
-    """Client for FatSecret REST API using OAuth 1.0 authentication."""
-
-    BASE_URL = "https://platform.fatsecret.com/rest/server.api"
-
+class FatSecretOAuth1:
     def __init__(self, consumer_key: str, consumer_secret: str):
-        self.consumer_key = consumer_key
-        self.consumer_secret = consumer_secret
-        self._session: Optional[aiohttp.ClientSession] = None
+        self.consumer_key = (consumer_key or "").strip()
+        self.consumer_secret = (consumer_secret or "").strip()
 
     @staticmethod
-    def _percent_encode(s: str) -> str:
-        """
-        Percent-encode a string according to RFC 3986 (OAuth 1.0 requirement).
+    def _enc(x: str) -> str:
+        # RFC3986 percent-encode for BASE STRING only
+        return urllib.parse.quote(str(x), safe="-._~")
 
-        Encodes everything except unreserved characters:
-        A-Z a-z 0-9 hyphen (-), period (.), underscore (_), tilde (~).
-        """
-        # urllib.parse.quote encodes all characters except alphanumerics and _ . -
-        # We need to also keep tilde (~) unencoded, so add it to safe characters.
-        # Decode any existing percent-encoding to ensure idempotency.
-        return urllib.parse.quote(urllib.parse.unquote(s), safe="-._~")
-
-    def _build_encoded_query(self, params: Dict[str, str]) -> str:
-        """
-        Build percent-encoded query string from parameters according to RFC 3986.
-
-        Returns string in format "key1=value1&key2=value2" with keys and values
-        percent-encoded and sorted lexicographically.
-        """
-        encoded = {}
-        for k, v in params.items():
-            encoded[self._percent_encode(k)] = self._percent_encode(v)
-        # Sort by encoded key, then value
-        sorted_items = sorted(encoded.items(), key=lambda x: (x[0], x[1]))
-        return "&".join(f"{k}={v}" for k, v in sorted_items)
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=10)
-            self._session = aiohttp.ClientSession(timeout=timeout)
-        return self._session
-
-    async def close(self):
-        if self._session and not self._session.closed:
-            await self._session.close()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-
-    def _generate_nonce(self) -> str:
-        """Generate a random string for OAuth nonce."""
-        return secrets.token_hex(8)
-
-    def _generate_timestamp(self) -> str:
-        """Generate current Unix timestamp for OAuth."""
-        return str(int(time.time()))
-
-    def _sign_request(
-        self, method: str, url: str, params: Dict[str, str]
-    ) -> str:
-        """
-        Generate OAuth 1.0 HMAC-SHA1 signature.
-
-        Returns the value for the Authorization header.
-        """
-
-        # OAuth parameters
-        oauth_params = {
+    def _oauth_params(self) -> Dict[str, str]:
+        # RAW values (not encoded)
+        return {
             "oauth_consumer_key": self.consumer_key,
-            "oauth_nonce": self._generate_nonce(),
+            "oauth_nonce": secrets.token_hex(8),
             "oauth_signature_method": "HMAC-SHA1",
-            "oauth_timestamp": self._generate_timestamp(),
+            "oauth_timestamp": str(int(time.time())),
             "oauth_version": "1.0",
         }
 
-        # Merge all parameters (excluding oauth_signature)
-        all_params = {**oauth_params, **params}
-        # Percent-encode keys and values according to RFC 3986
-        encoded_params = {}
-        for k, v in all_params.items():
-            encoded_params[
-                self._percent_encode(k)
-            ] = self._percent_encode(v)
-
-        # Sort by encoded key, then by value
-        sorted_items = sorted(
-            encoded_params.items(), key=lambda x: (x[0], x[1])
-        )
-        # Create parameter string
-        param_string = "&".join(f"{k}={v}" for k, v in sorted_items)
-
-        # Create signature base string
-        encoded_url = self._percent_encode(url)
-        encoded_method = self._percent_encode(method.upper())
-        encoded_param_string = self._percent_encode(param_string)
-        base_string = f"{encoded_method}&{encoded_url}&{encoded_param_string}"
-
-        # Create signing key (consumer_secret & token_secret, token_secret is empty)
-        signing_key = f"{self._percent_encode(self.consumer_secret)}&"
-
-        # Generate HMAC-SHA1 signature
-        signature = hmac.new(
-            signing_key.encode("utf-8"),
-            base_string.encode("utf-8"),
-            hashlib.sha1,
-        ).digest()
-        signature_b64 = base64.b64encode(signature).decode("utf-8")
-        # Build Authorization header
-        oauth_params["oauth_signature"] = signature_b64
-        auth_header = "OAuth " + ", ".join(
-            f'{self._percent_encode(k)}="{self._percent_encode(v)}"'
-            for k, v in oauth_params.items()
-        )
-        return auth_header
-
-    async def _make_request(
-        self, method: str, params: Dict[str, str]
-    ) -> Optional[Dict[str, Any]]:
+    def _normalized_params(self, params: Dict[str, str]) -> str:
         """
-        Make authenticated request to FatSecret API.
+        Normalized parameters for signature base string:
+        - percent-encode keys and values
+        - sort by key then value
+        - join with &
+        """
+        pairs = [(self._enc(k), self._enc(v)) for k, v in params.items()]
+        pairs.sort(key=lambda kv: (kv[0], kv[1]))
+        return "&".join(f"{k}={v}" for k, v in pairs)
 
-        Returns parsed JSON response or None on error.
+    def sign_query(self, http_method: str, url: str, params: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Returns dict of request params + oauth params + oauth_signature.
+
+        IMPORTANT:
+        - We percent-encode ONLY for building the signature base string.
+        - We return oauth_signature as RAW base64 (NOT percent-encoded),
+          because aiohttp will encode query params itself. If we encode here,
+          it becomes double-encoded and FatSecret returns Invalid signature.
         """
         if not self.consumer_key or not self.consumer_secret:
-            logger.debug("FatSecret credentials not configured")
-            return None
+            return {}
 
-        # Ensure format=json for JSON responses
-        params = {**params, "format": "json"}
+        # RAW string params (not encoded)
+        req_params: Dict[str, str] = {str(k): str(v) for k, v in params.items()}
+        oauth = self._oauth_params()
 
-        try:
-            session = await self._get_session()
-            headers = {
-                "Authorization": self._sign_request(
-                    method, self.BASE_URL, params
-                )
-            }
-            async with session.request(
-                method, self.BASE_URL, params=params, headers=headers
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(
-                        f"FatSecret API request failed with status {resp.status}"
-                    )
-                    return None
-                data = await resp.json()
-                # FatSecret wraps response in a top-level key
-                # e.g., {"foods": {"food": [...]}} or {"food": {...}}
-                return data
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.debug(f"FatSecret API network error: {e}")
-            return None
-        except (ValueError, TypeError, KeyError) as e:
-            logger.debug(f"FatSecret API parsing error: {e}")
-            return None
+        merged = {**req_params, **oauth}  # no oauth_signature yet
+        normalized = self._normalized_params(merged)
 
-    async def search_products(self, query: str) -> List[FoodSearchItem]:
-        """
-        Search for food products by query.
+        base_string = "&".join([
+            self._enc(http_method.upper()),
+            self._enc(url),
+            self._enc(normalized),
+        ])
 
-        Returns a list of FoodSearchItem objects, or empty list on error/no results.
-        """
+        signing_key = f"{self._enc(self.consumer_secret)}&"  # token secret empty
+        digest = hmac.new(signing_key.encode("utf-8"), base_string.encode("utf-8"), hashlib.sha1).digest()
+        sig_b64 = base64.b64encode(digest).decode("utf-8")
+
+        # CRITICAL: return RAW base64; aiohttp will percent-encode it in query string
+        oauth["oauth_signature"] = sig_b64
+
+        return {**req_params, **oauth}
+
+
+class FoodClient:
+    FOODS_SEARCH_URL = "https://platform.fatsecret.com/rest/foods/search/v1"
+    FOOD_GET_URL = "https://platform.fatsecret.com/rest/food/v5"
+
+    def __init__(self, consumer_key: str, consumer_secret: str):
+        self.oauth = FatSecretOAuth1(consumer_key, consumer_secret)
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
+        return self._session
+
+    async def close(self) -> None:
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+    async def foods_search(
+        self,
+        search_expression: str,
+        max_results: int = 10,
+        page_number: int = 0,
+    ) -> List[FoodSearchItem]:
         params = {
-            "method": "foods.search",
-            "search_expression": query,
-            "max_results": "10",
+            "search_expression": search_expression,
+            "max_results": str(max_results),
+            "page_number": str(page_number),
+            "format": "json",
         }
-        data = await self._make_request("GET", params)
-        if not data:
-            return []
+        signed = self.oauth.sign_query("GET", self.FOODS_SEARCH_URL, params)
 
-        try:
-            # Response structure: {"foods": {"food": [{...}, ...]}}
+        session = await self._get_session()
+        async with session.get(self.FOODS_SEARCH_URL, params=signed) as resp:
+            raw = await resp.text()
+            print(raw)
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                logger.warning("FatSecret JSON parse error status=%s body=%s", resp.status, raw)
+                return []
+
+            if isinstance(data, dict) and "error" in data:
+                logger.warning("FatSecret API error status=%s body=%s", resp.status, data)
+                return []
+
             foods = data.get("foods", {}).get("food", [])
-            # If only one result, API returns a dict, not list
             if isinstance(foods, dict):
                 foods = [foods]
 
-            results = []
-            for food in foods:
-                food_id = food.get("food_id")
-                name = food.get("food_name")
-                brand = food.get("brand_name")
-                if food_id and name:
-                    results.append(
-                        FoodSearchItem(
-                            food_id=str(food_id),
-                            name=name,
-                            brand=brand,
-                        )
-                    )
-            return results
-        except (AttributeError, KeyError, TypeError) as e:
-            logger.debug(f"Error parsing search results: {e}")
-            return []
+            out: List[FoodSearchItem] = []
+            for f in foods:
+                fid = f.get("food_id")
+                name = f.get("food_name")
+                brand = f.get("brand_name")
+                if fid and name:
+                    out.append(FoodSearchItem(food_id=str(fid), name=str(name), brand=brand))
+            return out
 
-    async def get_food(self, food_id: str) -> Optional[FoodNutrition]:
-        """
-        Get detailed nutrition information for a specific food.
-
-        Returns FoodNutrition object normalized to per 100g, or None on error.
-        """
+    async def get_food_kcal_per_100g(self, food_id: str) -> Optional[float]:
         params = {
-            "method": "food.get",
             "food_id": food_id,
+            "format": "json",
         }
-        data = await self._make_request("GET", params)
-        if not data:
-            return None
 
-        try:
-            # Response structure: {"food": {...}}
-            food = data.get("food", {})
-            # Nutrition information is in "servings" -> "serving"
+        signed = self.oauth.sign_query("GET", self.FOOD_GET_URL, params)
+        session = await self._get_session()
+
+        async with session.get(self.FOOD_GET_URL, params=signed) as resp:
+            raw = await resp.text()
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                logger.warning("FatSecret food.get parse error status=%s body=%s", resp.status, raw)
+                return None
+
+            if isinstance(data, dict) and "error" in data:
+                logger.warning("FatSecret food.get error status=%s body=%s", resp.status, data)
+                return None
+
+            food = data.get("food")
+            if not food:
+                return None
+
             servings = food.get("servings", {}).get("serving")
             if not servings:
                 return None
 
-            # If multiple serving sizes, use the first one
-            if isinstance(servings, list):
-                serving = servings[0]
-            else:
-                serving = servings
+            serving = servings[0] if isinstance(servings, list) else servings
 
-            # Extract values
             kcal = serving.get("calories")
-            protein = serving.get("protein")
-            fat = serving.get("fat")
-            carbs = serving.get("carbohydrate")
-            serving_size = serving.get("metric_serving_amount")
-            serving_unit = serving.get("metric_serving_unit")
+            amount = serving.get("metric_serving_amount")
+            unit = serving.get("metric_serving_unit")
 
-            # Normalize to per 100g
-            kcal_per_100g = 0.0
-            protein_per_100g = None
-            fat_per_100g = None
-            carbs_per_100g = None
+            if not kcal or not amount or unit != "g":
+                return None
 
-            if kcal and serving_size and serving_unit == "g":
-                try:
-                    factor = 100.0 / float(serving_size)
-                    kcal_per_100g = float(kcal) * factor
-                    if protein:
-                        protein_per_100g = float(protein) * factor
-                    if fat:
-                        fat_per_100g = float(fat) * factor
-                    if carbs:
-                        carbs_per_100g = float(carbs) * factor
-                except (ValueError, ZeroDivisionError):
-                    pass
-
-            return FoodNutrition(
-                kcal_per_100g=kcal_per_100g,
-                protein_g=protein_per_100g,
-                fat_g=fat_per_100g,
-                carbs_g=carbs_per_100g,
-            )
-        except (AttributeError, KeyError, TypeError, ValueError) as e:
-            logger.debug(f"Error parsing food nutrition: {e}")
-            return None
-
-    async def search_product(self, query: str) -> Optional[Tuple[str, float, str]]:
-        """
-        Legacy method for backward compatibility.
-
-        Returns (product_name, kcal_per_100g, attribution) tuple or None.
-        Uses the first search result from FatSecret.
-        If no search results, returns (query, 0.0, "").
-        """
-        products = await self.search_products(query)
-        if not products:
-            return (query, 0.0, "")
-
-        # Get nutrition for the first product
-        nutrition = await self.get_food(products[0].food_id)
-        if not nutrition or nutrition.kcal_per_100g <= 0:
-            return None
-
-        return (products[0].name, nutrition.kcal_per_100g, FATSECRET_ATTRIBUTION)
+            try:
+                return float(kcal) * (100.0 / float(amount))
+            except (ValueError, ZeroDivisionError):
+                return None

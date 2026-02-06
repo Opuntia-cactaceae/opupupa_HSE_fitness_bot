@@ -68,7 +68,7 @@ async def process_food_input(message: Message, state: FSMContext):
         await state.update_data(parent_context=None)
         return
 
-    product_name, kcal_per_100g, attribution = result
+    product_name, kcal_per_100g = result
 
     # Сохраняем данные в состоянии
     await state.update_data(
@@ -83,7 +83,6 @@ async def process_food_input(message: Message, state: FSMContext):
     await message.answer(
         f"🍎 Найден продукт: {product_name}\n"
         f"Калорийность: {kcal_per_100g} ккал/100г\n"
-        f"{attribution}\n\n"
         "Введите количество в граммах:",
     )
 
