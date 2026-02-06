@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from domain.entities.food_log import FoodLog
 from domain.interfaces.unit_of_work import UnitOfWork
-from application.use_cases.maintenance.ensure_daily_stats import ensure_daily_stats
+
 
 
 async def finalize_food_log(

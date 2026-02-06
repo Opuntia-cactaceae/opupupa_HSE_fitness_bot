@@ -2,8 +2,6 @@ from datetime import date, datetime
 
 from domain.entities.workout_log import WorkoutLog
 from domain.interfaces.unit_of_work import UnitOfWork
-from application.use_cases.maintenance.ensure_daily_stats import ensure_daily_stats
-
 
 async def finalize_workout_log(
     user_id: int,

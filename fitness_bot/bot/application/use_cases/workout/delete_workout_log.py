@@ -3,7 +3,6 @@ from datetime import date, datetime
 from domain.entities.workout_log import WorkoutLog
 from domain.interfaces.unit_of_work import UnitOfWork
 from domain.exceptions import EntityNotFoundError
-from application.use_cases.maintenance.ensure_daily_stats import ensure_daily_stats
 
 
 async def delete_workout_log(log_id: int, user_id: int, uow: UnitOfWork) -> None:
