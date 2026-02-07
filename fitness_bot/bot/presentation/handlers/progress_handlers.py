@@ -1,6 +1,9 @@
+import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
+
+logger = logging.getLogger(__name__)
 
 from presentation.keyboards.inline import main_menu_keyboard, profile_setup_keyboard, weekly_stats_keyboard, progress_keyboard, charts_keyboard
 from infrastructure.config.database import AsyncSessionFactory
@@ -164,18 +167,23 @@ async def callback_charts_period(callback: CallbackQuery, state: FSMContext):
     async with SqlAlchemyUnitOfWork(AsyncSessionFactory) as uow:
         daily_stats = await get_progress_chart_data(callback.from_user.id, period_days, uow)
 
-        png_bytes = build_progress_chart(daily_stats)
-
-        if png_bytes is None:
-            await callback.message.answer("📊 Нет данных за выбранный период.")
-            message_text = "Нет данных за выбранный период. Выберите другой период:"
+        try:
+            png_bytes = build_progress_chart(daily_stats)
+        except Exception as e:
+            logger.exception("Ошибка при генерации графиков")
+            await callback.message.answer("❌ Ошибка при построении графиков. Попробуйте позже.")
+            message_text = "Произошла ошибка при построении графиков. Выберите другой период:"
         else:
-            input_file = BufferedInputFile(png_bytes, filename="progress_chart.png")
-            await callback.message.answer_photo(
-                photo=input_file,
-                caption=f"Графики прогресса за {period_days} дней",
-            )
-            message_text = f"Графики за {period_days} дней отправлены. Выберите другой период:"
+            if png_bytes is None:
+                await callback.message.answer("📊 Нет данных за выбранный период.")
+                message_text = "Нет данных за выбранный период. Выберите другой период:"
+            else:
+                input_file = BufferedInputFile(png_bytes, filename="progress_chart.png")
+                await callback.message.answer_photo(
+                    photo=input_file,
+                    caption=f"Графики прогресса за {period_days} дней",
+                )
+                message_text = f"Графики за {period_days} дней отправлены. Выберите другой период:"
 
         keyboard = charts_keyboard(parent_context)
         await replace_menu_message(

@@ -41,13 +41,8 @@ async def get_progress_chart_data(
     date_from = today - timedelta(days=period_days - 1)
     date_to = today
 
-                                                                        
-    if date_from > today:
-                                                                   
-        return []
 
-                                                                                  
-    if date_from < today - timedelta(days=365 * 10):                                   
+    if date_from < today - timedelta(days=365 * 10):
         date_from = today
 
     daily_stats = await uow.daily_stats.get_for_user_in_range(
